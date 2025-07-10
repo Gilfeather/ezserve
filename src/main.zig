@@ -7,6 +7,8 @@ pub const ResponseInfo = lib.ResponseInfo;
 pub const getMimeType = lib.getMimeType;
 pub const initMimeMap = lib.initMimeMap;
 
+const FILE_READ_BUF_SIZE = 16384; // 16KB, 必要に応じて32KBや64KBに調整可
+
 fn handleFileRequest(writer: anytype, config: Config, path: []const u8, is_head: bool, allocator: std.mem.Allocator) !ResponseInfo {
     var file_path = try std.fmt.allocPrint(allocator, "{s}{s}", .{ config.root, path });
     defer allocator.free(file_path);
@@ -46,27 +48,30 @@ fn handleFileRequest(writer: anytype, config: Config, path: []const u8, is_head:
     // Build headers in buffer
     var header_buf: [1024]u8 = undefined;
     const header = try std.fmt.bufPrint(&header_buf, 
-        "HTTP/1.1 200 OK\r\n{s}Content-Type: {s}\r\nContent-Length: {d}\r\n\r\n",
+        "HTTP/1.1 200 OK\r\n{s}Content-Type: {s}\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n",
         .{ if (config.cors) "Access-Control-Allow-Origin: *\r\n" else "", content_type, file_size }
     );
+
     
     // Send headers
-    try writer.writeAll(header);
+    try writeAllNonBlocking(writer, header);
     
     // Ultra-optimized file streaming - larger buffer + sendfile-style optimization
     if (!is_head) {
-        // Use much larger buffer to reduce syscall count
-        var buf: [65536]u8 = undefined; // 64KB buffer
+        // Use buffer to reduce syscall count
+        var buf: [FILE_READ_BUF_SIZE]u8 = undefined;
         var total_sent: usize = 0;
-        
         while (total_sent < file_size) {
-            const bytes_read = try file.readAll(&buf);
-            if (bytes_read == 0) break;
-            
-            try writer.writeAll(buf[0..bytes_read]);
+            const bytes_read = file.read(&buf) catch |err| {
+                if (err == error.WouldBlock) {
+                    // 非同期I/Oならイベント待ちにする（ここではbreakでOK）
+                    break;
+                }
+                return err;
+            };
+            if (bytes_read == 0) break; // EOF
+            try writeAllNonBlocking(writer, buf[0..bytes_read]);
             total_sent += bytes_read;
-            
-            // Early exit if we've sent everything
             if (total_sent >= file_size) break;
         }
     }
@@ -104,20 +109,22 @@ fn serveSpaFallback(writer: anytype, config: Config, is_head: bool, allocator: s
         .{ if (config.cors) "Access-Control-Allow-Origin: *\r\n" else "", file_size }
     );
     
-    try writer.writeAll(header);
+    try writeAllNonBlocking(writer, header);
     
     // Ultra-optimized streaming - larger buffer
     if (!is_head) {
-        var buf: [65536]u8 = undefined; // 64KB buffer
+        var buf: [FILE_READ_BUF_SIZE]u8 = undefined;
         var total_sent: usize = 0;
-        
         while (total_sent < file_size) {
-            const bytes_read = try index_file.readAll(&buf);
+            const bytes_read = index_file.read(&buf) catch |err| {
+                if (err == error.WouldBlock) {
+                    break;
+                }
+                return err;
+            };
             if (bytes_read == 0) break;
-            
-            try writer.writeAll(buf[0..bytes_read]);
+            try writeAllNonBlocking(writer, buf[0..bytes_read]);
             total_sent += bytes_read;
-            
             if (total_sent >= file_size) break;
         }
     }
@@ -416,12 +423,12 @@ const UltraPoller = struct {
     
     // macOS kqueue event loop - ULTRA FAST
     fn kqueueEventLoop(self: *Self, server: *std.net.Server, config: Config) !void {
-        var eventlist: [64]std.posix.system.Kevent = undefined;
+        var eventlist: [512]std.posix.system.Kevent = undefined;
         
         // Short timeout for responsiveness
-        var timeout = std.posix.system.timespec{ .sec = 0, .nsec = 10_000_000 }; // 10ms
+        var timeout = std.posix.system.timespec{ .sec = 0, .nsec = 50_000_000 }; // 50ms
         var changelist: [1]std.posix.system.Kevent = undefined;
-        const num_events = std.posix.system.kevent(self.poller_fd, &changelist, 0, &eventlist, 64, &timeout);
+        const num_events = std.posix.system.kevent(self.poller_fd, &changelist, 0, &eventlist, 512, &timeout);
         
         if (num_events < 0) return error.KqueueWaitFailed;
         if (num_events == 0) return; // Timeout
@@ -438,10 +445,10 @@ const UltraPoller = struct {
     
     // Linux epoll event loop - ULTRA FAST
     fn epollEventLoop(self: *Self, server: *std.net.Server, config: Config) !void {
-        var events: [64]std.posix.system.epoll_event = undefined;
+        var events: [512]std.posix.system.epoll_event = undefined;
         
         // Short timeout for responsiveness
-        const num_events = std.posix.system.epoll_wait(self.poller_fd, &events, 64, 10); // 10ms
+        const num_events = std.posix.system.epoll_wait(self.poller_fd, &events, 512, 50); // 50ms
         
         if (num_events < 0) return error.EpollWaitFailed;
         if (num_events == 0) return; // Timeout
@@ -469,15 +476,34 @@ const UltraPoller = struct {
             _ = self.arena.reset(.free_all);
             const req_allocator = self.arena.allocator();
             
-            // Handle request immediately - NO THREADING OVERHEAD
-            handleRequest(conn.stream.reader(), conn.stream.writer(), conn.address, config, req_allocator) catch |err| {
-                if (builtin.mode != .ReleaseFast) {
-                    std.log.err("Error handling ultra request: {}", .{err});
-                }
-            };
+            // keep-alive
+            while (true) {
+                const keep_alive = handleRequest(conn.stream.reader(), conn.stream.writer(), conn.address, config, req_allocator) catch |err| {
+                    if (builtin.mode != .ReleaseFast) {
+                        std.log.err("Error handling ultra request: {}", .{err});
+                    }
+                    break;
+                };
+                if (!keep_alive) break;
+            }
         }
     }
 };
+
+// writeAllNonBlocking関数を追加
+fn writeAllNonBlocking(writer: anytype, buf: []const u8) !void {
+    var remaining = buf;
+    while (remaining.len > 0) {
+        const n = writer.write(remaining) catch |err| {
+            if (err == error.WouldBlock) {
+                std.time.sleep(10_000); // 10μs backoff
+                continue;
+            }
+            return err;
+        };
+        remaining = remaining[n..];
+    }
+}
 
 // Custom high-performance poller implementation
 fn customPollerMain(_: std.mem.Allocator, config: Config) !void {
@@ -930,52 +956,80 @@ fn workerThread(server: *std.net.Server, config: Config, shared_allocator: std.m
 }
 
 // Handle individual HTTP request - ZERO-ALLOCATION parsing
-fn handleRequest(reader: anytype, writer: anytype, addr: std.net.Address, config: Config, req_allocator: std.mem.Allocator) !void {
+fn handleRequest(reader: anytype, writer: anytype, addr: std.net.Address, config: Config, req_allocator: std.mem.Allocator) !bool {
     // Pre-allocated buffers - NO dynamic allocation!
     var req_line_buf: [8192]u8 = undefined;
     var header_buf: [4096]u8 = undefined;
-    
-    // Read request line into fixed buffer - MUCH faster than readUntilDelimiterOrEofAlloc
-    const req_line = reader.readUntilDelimiter(&req_line_buf, '\n') catch |err| {
-        if (err != error.StreamTooLong) return;
-        // Request line too long - treat as bad request
-        try writer.writeAll("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
-        return;
+    var req_line_len: usize = 0;
+    var found_req_line = false;
+    // --- エッジトリガー対応: リクエストラインをWouldBlockまで繰り返しread ---
+    while (!found_req_line) {
+    const n = reader.read(req_line_buf[req_line_len..]) catch |err| {
+        if (err == error.WouldBlock) {
+            std.time.sleep(10_000); // 10μs backoff
+            continue; // 次のread試行へ
+        }
+        return err;
     };
-    
-    // Fast path parsing - zero allocations, direct slice operations
+        if (n == 0) break; // EOF
+        req_line_len += n;
+        // 改行が来たらリクエストライン終端
+        if (std.mem.indexOfScalar(u8, req_line_buf[0..req_line_len], '\n')) |idx| {
+            found_req_line = true;
+            req_line_len = idx + 1;
+        }
+        if (req_line_len == req_line_buf.len) break; // バッファ上限
+    }
+    if (!found_req_line) {
+        try writer.writeAll("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
+        return false;
+    }
+    // リクエストラインをパース
+    const req_line = req_line_buf[0..req_line_len];
     const clean_line = std.mem.trim(u8, req_line, " \r\n\t");
     var it = std.mem.splitScalar(u8, clean_line, ' ');
     const method = std.mem.trim(u8, it.next() orelse "", " \r\n\t");
     const path = std.mem.trim(u8, it.next() orelse "/", " \r\n\t");
-    
-    // Skip headers efficiently - reuse buffer
-    while (true) {
-        const h = reader.readUntilDelimiter(&header_buf, '\n') catch |err| {
-            if (err == error.StreamTooLong) continue; // Skip oversized headers
-            break;
+    // --- エッジトリガー対応: ヘッダもWouldBlockまで繰り返しread ---
+    var found_headers_end = false;
+    var header_len: usize = 0;
+    while (!found_headers_end) {
+        const n = reader.read(header_buf[header_len..]) catch |err| {
+            if (err == error.WouldBlock) break;
+            return err;
         };
-        if (std.mem.trimRight(u8, h, "\r\n").len == 0) break;
+        if (n == 0) break;
+        header_len += n;
+        // 連続した\r\n\r\nまたは\n\nでヘッダ終端
+        if (std.mem.indexOf(u8, header_buf[0..header_len], "\r\n\r\n") != null or std.mem.indexOf(u8, header_buf[0..header_len], "\n\n") != null) {
+            found_headers_end = true;
+        }
+        if (header_len == header_buf.len) break;
     }
-    
+    // --- ヘッダ読み込み後にkeep-alive判定 ---
+    var keep_alive = false;
+    // ヘッダバッファからConnection: keep-aliveを探す
+    if (header_len > 0) {
+        const headers = header_buf[0..header_len];
+        if (std.mem.indexOf(u8, headers, "Connection: keep-alive") != null or std.mem.indexOf(u8, headers, "connection: keep-alive") != null) {
+            keep_alive = true;
+        }
+    }
+    // --- 以降は従来通り ---
     var status_code: u16 = 200;
     var content_length: usize = 0;
-    
-    // Optimized method check - reduce comparisons
     const is_get = std.mem.eql(u8, method, "GET");
     const is_head = std.mem.eql(u8, method, "HEAD");
-    
     if (is_get or is_head) {
         const request_path = if (std.mem.eql(u8, path, "/")) "/index.html" else path;
         const resp_info = try handleFileRequest(writer, config, request_path, is_head, req_allocator);
         status_code = resp_info.status;
         content_length = resp_info.content_length;
     } else {
-        // Use writeAll instead of print for static response
         try writer.writeAll("HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n");
         status_code = 405;
         content_length = 0;
     }
-    
     try logAccess(method, path, status_code, content_length, addr, config.log_json, req_allocator);
+    return keep_alive;
 } 
