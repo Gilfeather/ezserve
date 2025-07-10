@@ -13,7 +13,8 @@ pub fn build(b: *std.Build) void {
     
     // Binary size optimization
     exe.root_module.strip = true;
-    exe.root_module.single_threaded = true;
+    // Remove single_threaded to enable multi-threading
+    // exe.root_module.single_threaded = true;
     
     b.installArtifact(exe);
     
