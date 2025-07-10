@@ -142,7 +142,7 @@ zig build test-integration   # Run integration tests only
 zig build
 
 # Release build
-zig build -Drelease-fast
+zig build -Doptimize=ReleaseFast
 
 # Cross-compilation examples
 zig build -Dtarget=x86_64-windows
