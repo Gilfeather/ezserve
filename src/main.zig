@@ -6,9 +6,7 @@ pub const ResponseInfo = lib.ResponseInfo;
 pub const getMimeType = lib.getMimeType;
 pub const initMimeMap = lib.initMimeMap;
 
-fn handleFileRequest(writer: anytype, config: Config, path: []const u8, is_head: bool) !ResponseInfo {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
+fn handleFileRequest(writer: anytype, config: Config, path: []const u8, is_head: bool, allocator: std.mem.Allocator) !ResponseInfo {
     
     var file_path = try std.fmt.allocPrint(allocator, "{s}{s}", .{ config.root, path });
     defer allocator.free(file_path);
@@ -79,9 +77,7 @@ fn handleFileRequest(writer: anytype, config: Config, path: []const u8, is_head:
 }
 
 
-fn logAccess(method: []const u8, path: []const u8, status: u16, content_length: usize, addr: std.net.Address, log_json: bool) !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
+fn logAccess(method: []const u8, path: []const u8, status: u16, content_length: usize, addr: std.net.Address, log_json: bool, allocator: std.mem.Allocator) !void {
     
     const timestamp = std.time.timestamp();
     const client_ip = switch (addr.any.family) {
@@ -198,9 +194,10 @@ pub fn main() !void {
     const allocator = std.heap.page_allocator;
     const config = try parseArgs(allocator);
 
-    // Start server
+    // Start server with shared allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    _ = gpa.allocator();
+    defer _ = gpa.deinit();
+    const shared_allocator = gpa.allocator();
     
     // Parse bind address
     const bind_addr = try std.net.Address.parseIp4(config.bind, config.port);
@@ -233,8 +230,8 @@ pub fn main() !void {
         defer conn.stream.close();
         var reader = conn.stream.reader();
         
-        // Use arena allocator for request parsing
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        // Use arena allocator for request parsing (resets after each request)
+        var arena = std.heap.ArenaAllocator.init(shared_allocator);
         defer arena.deinit();
         const req_allocator = arena.allocator();
         
@@ -275,7 +272,7 @@ pub fn main() !void {
             if (std.mem.eql(u8, method, "GET") or std.mem.eql(u8, method, "HEAD")) {
                 const request_path = if (std.mem.eql(u8, path, "/")) "/index.html" else path;
                 const is_head = std.mem.eql(u8, method, "HEAD");
-                const resp_info = try handleFileRequest(conn.stream.writer(), config, request_path, is_head);
+                const resp_info = try handleFileRequest(conn.stream.writer(), config, request_path, is_head, req_allocator);
                 status_code = resp_info.status;
                 content_length = resp_info.content_length;
             } else {
@@ -287,7 +284,7 @@ pub fn main() !void {
                 content_length = 0;
             }
             
-            try logAccess(method, path, status_code, content_length, conn.address, config.log_json);
+            try logAccess(method, path, status_code, content_length, conn.address, config.log_json, req_allocator);
         }
     }
 } 
