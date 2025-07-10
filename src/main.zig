@@ -225,66 +225,89 @@ pub fn main() !void {
     defer server.deinit();
     std.log.info("ezserve: http://{s}:{d} root={s}", .{config.bind, config.port, config.root});
 
+    // Use thread pool for concurrent request handling
+    var pool: std.Thread.Pool = undefined;
+    try pool.init(.{ .allocator = shared_allocator, .n_jobs = null }); // Auto-detect CPU cores
+    defer pool.deinit();
+
     while (true) {
-        var conn = try server.accept();
-        defer conn.stream.close();
-        var reader = conn.stream.reader();
-        
-        // Use arena allocator for request parsing (resets after each request)
-        var arena = std.heap.ArenaAllocator.init(shared_allocator);
-        defer arena.deinit();
-        const req_allocator = arena.allocator();
-        
-        // Read first line (request line) with dynamic allocation
-        const req_line = reader.readUntilDelimiterOrEofAlloc(req_allocator, '\n', 8192) catch |err| {
-            std.log.err("Error reading request line: {}", .{err});
+        const conn = server.accept() catch |err| {
+            std.log.err("Failed to accept connection: {}", .{err});
             continue;
         };
-        if (req_line) |line| {
-            // Remove newline and carriage return
-            const clean_line = std.mem.trim(u8, line, " \r\n\t");
-            // Split by space
-            var it = std.mem.splitScalar(u8, clean_line, ' ');
-            const method_raw = it.next() orelse "";
-            const path_raw = it.next() orelse "/";
-            _ = it.next() orelse "";
-            
-            
-            // Copy method and path to owned memory using arena allocator
-            const method = try req_allocator.dupe(u8, std.mem.trim(u8, method_raw, " \r\n\t"));
-            const path = try req_allocator.dupe(u8, std.mem.trim(u8, path_raw, " \r\n\t"));
-            
-            // Skip headers until empty line with dynamic allocation
-            while (true) {
-                const h = reader.readUntilDelimiterOrEofAlloc(req_allocator, '\n', 8192) catch |err| {
-                    std.log.err("Error reading header: {}", .{err});
-                    break;
-                };
-                if (h) |header_line| {
-                    if (std.mem.trimRight(u8, header_line, "\r\n").len == 0) break;
-                } else break;
-            }
-            
-            var status_code: u16 = 200;
-            var content_length: usize = 0;
-            
-            // File serving functionality
-            if (std.mem.eql(u8, method, "GET") or std.mem.eql(u8, method, "HEAD")) {
-                const request_path = if (std.mem.eql(u8, path, "/")) "/index.html" else path;
-                const is_head = std.mem.eql(u8, method, "HEAD");
-                const resp_info = try handleFileRequest(conn.stream.writer(), config, request_path, is_head, req_allocator);
-                status_code = resp_info.status;
-                content_length = resp_info.content_length;
-            } else {
-                try conn.stream.writer().print(
-                    "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n",
-                    .{}
-                );
-                status_code = 405;
-                content_length = 0;
-            }
-            
-            try logAccess(method, path, status_code, content_length, conn.address, config.log_json, req_allocator);
+        
+        // Spawn async task for handling connection
+        try pool.spawn(handleConnection, .{ conn, config, shared_allocator });
+    }
+}
+
+// Async connection handler
+fn handleConnection(conn: std.net.Server.Connection, config: Config, shared_allocator: std.mem.Allocator) void {
+    defer conn.stream.close();
+    
+    const reader = conn.stream.reader();
+    
+    // Use arena allocator for request parsing (resets after each request)
+    var arena = std.heap.ArenaAllocator.init(shared_allocator);
+    defer arena.deinit();
+    const req_allocator = arena.allocator();
+    
+    handleRequest(reader, conn.stream.writer(), conn.address, config, req_allocator) catch |err| {
+        std.log.err("Error handling request: {}", .{err});
+    };
+}
+
+// Handle individual HTTP request
+fn handleRequest(reader: anytype, writer: anytype, addr: std.net.Address, config: Config, req_allocator: std.mem.Allocator) !void {
+    // Read first line (request line) with dynamic allocation
+    const req_line = reader.readUntilDelimiterOrEofAlloc(req_allocator, '\n', 8192) catch |err| {
+        std.log.err("Error reading request line: {}", .{err});
+        return;
+    };
+    
+    if (req_line) |line| {
+        // Remove newline and carriage return
+        const clean_line = std.mem.trim(u8, line, " \r\n\t");
+        // Split by space
+        var it = std.mem.splitScalar(u8, clean_line, ' ');
+        const method_raw = it.next() orelse "";
+        const path_raw = it.next() orelse "/";
+        _ = it.next() orelse "";
+        
+        // Copy method and path to owned memory using arena allocator
+        const method = try req_allocator.dupe(u8, std.mem.trim(u8, method_raw, " \r\n\t"));
+        const path = try req_allocator.dupe(u8, std.mem.trim(u8, path_raw, " \r\n\t"));
+        
+        // Skip headers until empty line with dynamic allocation
+        while (true) {
+            const h = reader.readUntilDelimiterOrEofAlloc(req_allocator, '\n', 8192) catch |err| {
+                std.log.err("Error reading header: {}", .{err});
+                break;
+            };
+            if (h) |header_line| {
+                if (std.mem.trimRight(u8, header_line, "\r\n").len == 0) break;
+            } else break;
         }
+        
+        var status_code: u16 = 200;
+        var content_length: usize = 0;
+        
+        // File serving functionality
+        if (std.mem.eql(u8, method, "GET") or std.mem.eql(u8, method, "HEAD")) {
+            const request_path = if (std.mem.eql(u8, path, "/")) "/index.html" else path;
+            const is_head = std.mem.eql(u8, method, "HEAD");
+            const resp_info = try handleFileRequest(writer, config, request_path, is_head, req_allocator);
+            status_code = resp_info.status;
+            content_length = resp_info.content_length;
+        } else {
+            try writer.print(
+                "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n",
+                .{}
+            );
+            status_code = 405;
+            content_length = 0;
+        }
+        
+        try logAccess(method, path, status_code, content_length, addr, config.log_json, req_allocator);
     }
 } 
