@@ -423,12 +423,12 @@ const UltraPoller = struct {
     
     // macOS kqueue event loop - ULTRA FAST
     fn kqueueEventLoop(self: *Self, server: *std.net.Server, config: Config) !void {
-        var eventlist: [512]std.posix.system.Kevent = undefined;
+        var eventlist: [1024]std.posix.system.Kevent = undefined;
         
         // Short timeout for responsiveness
-        var timeout = std.posix.system.timespec{ .sec = 0, .nsec = 50_000_000 }; // 50ms
+        var timeout = std.posix.system.timespec{ .sec = 0, .nsec = 10_000_000 }; // 10ms
         var changelist: [1]std.posix.system.Kevent = undefined;
-        const num_events = std.posix.system.kevent(self.poller_fd, &changelist, 0, &eventlist, 512, &timeout);
+        const num_events = std.posix.system.kevent(self.poller_fd, &changelist, 0, &eventlist, 1024, &timeout);
         
         if (num_events < 0) return error.KqueueWaitFailed;
         if (num_events == 0) return; // Timeout
@@ -445,10 +445,10 @@ const UltraPoller = struct {
     
     // Linux epoll event loop - ULTRA FAST
     fn epollEventLoop(self: *Self, server: *std.net.Server, config: Config) !void {
-        var events: [512]std.posix.system.epoll_event = undefined;
+        var events: [1024]std.posix.system.epoll_event = undefined;
         
         // Short timeout for responsiveness
-        const num_events = std.posix.system.epoll_wait(self.poller_fd, &events, 512, 50); // 50ms
+        const num_events = std.posix.system.epoll_wait(self.poller_fd, &events, 1024, 10); // 10ms
         
         if (num_events < 0) return error.EpollWaitFailed;
         if (num_events == 0) return; // Timeout
