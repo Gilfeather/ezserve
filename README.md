@@ -1,4 +1,4 @@
-# 🚀 ezserve
+# 🚀 ezserve v0.2.0
 
 **Ultra-lightweight, zero-dependency development HTTP server written in Zig**
 
@@ -100,7 +100,7 @@ zig build test-integration   # Run integration tests only
 
 ### 🔮 Future Enhancements
 
-#### Version 0.2
+#### Version 0.3
 - [ ] `ezserve dev` command - Development mode with --watch + --open + --cors
 - [ ] File watching (`--watch` option)
 - [ ] Browser auto-open (`--open` flag)
@@ -108,7 +108,7 @@ zig build test-integration   # Run integration tests only
 - [ ] Range requests support
 - [ ] ETag support
 
-#### Version 0.3
+#### Version 0.4
 - [ ] Gzip compression support
 - [ ] Configuration file support (.ezserve.toml)
 - [ ] IPv6 support
