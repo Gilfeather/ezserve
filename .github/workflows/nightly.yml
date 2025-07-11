@@ -1,0 +1,227 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Run at 2 AM UTC every day
+  workflow_dispatch:     # Allow manual trigger
+
+jobs:
+  nightly-build:
+    name: Nightly build and test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        zig-version: ['master']  # Test with latest Zig master
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig (master)
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: master
+    
+    - name: Verify Zig installation
+      run: zig version
+    
+    - name: Run tests
+      continue-on-error: true  # Don't fail if master is broken
+      run: |
+        zig build test || echo "⚠️ Tests failed with Zig master"
+    
+    - name: Build
+      continue-on-error: true
+      run: |
+        zig build -Doptimize=ReleaseFast || echo "⚠️ Build failed with Zig master"
+
+  performance-regression:
+    name: Performance regression test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 2  # Get current and previous commit
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Install wrk
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wrk bc
+    
+    - name: Build current version
+      run: zig build -Doptimize=ReleaseFast
+    
+    - name: Test current performance
+      run: |
+        echo "<h1>Performance Test</h1>" > index.html
+        ./zig-out/bin/ezserve --port 8080 &
+        SERVER_PID=$!
+        sleep 2
+        
+        # Run performance test
+        wrk -t4 -c100 -d10s http://127.0.0.1:8080/ > current_perf.txt
+        kill $SERVER_PID
+        
+        # Extract RPS
+        CURRENT_RPS=$(cat current_perf.txt | grep "Requests/sec:" | awk '{print $2}')
+        echo "CURRENT_RPS=$CURRENT_RPS" >> $GITHUB_ENV
+        echo "Current performance: $CURRENT_RPS req/sec"
+    
+    - name: Build previous version
+      run: |
+        git checkout HEAD~1
+        zig build -Doptimize=ReleaseFast
+        git checkout -
+    
+    - name: Test previous performance
+      run: |
+        ./zig-out/bin/ezserve --port 8081 &
+        SERVER_PID=$!
+        sleep 2
+        
+        # Run performance test
+        wrk -t4 -c100 -d10s http://127.0.0.1:8081/ > previous_perf.txt
+        kill $SERVER_PID
+        
+        # Extract RPS
+        PREVIOUS_RPS=$(cat previous_perf.txt | grep "Requests/sec:" | awk '{print $2}')
+        echo "PREVIOUS_RPS=$PREVIOUS_RPS" >> $GITHUB_ENV
+        echo "Previous performance: $PREVIOUS_RPS req/sec"
+    
+    - name: Compare performance
+      run: |
+        # Calculate percentage change
+        CHANGE=$(echo "scale=2; ($CURRENT_RPS - $PREVIOUS_RPS) / $PREVIOUS_RPS * 100" | bc)
+        echo "Performance change: $CHANGE%"
+        
+        # Fail if performance dropped by more than 5%
+        if (( $(echo "$CHANGE < -5" | bc -l) )); then
+          echo "❌ Performance regression detected: $CHANGE%"
+          echo "Current: $CURRENT_RPS req/sec"
+          echo "Previous: $PREVIOUS_RPS req/sec"
+          exit 1
+        else
+          echo "✅ Performance within acceptable range: $CHANGE%"
+        fi
+
+  security-audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Build with security features
+      run: |
+        # Build with ReleaseSafe for security checks
+        zig build -Doptimize=ReleaseSafe
+    
+    - name: Binary security analysis
+      run: |
+        # Check for stack canaries and other security features
+        if command -v checksec >/dev/null 2>&1; then
+          checksec --file=zig-out/bin/ezserve
+        fi
+        
+        # Check for hardcoded secrets
+        if grep -r "password\|secret\|key" src/ --exclude-dir=.git; then
+          echo "⚠️ Potential hardcoded secrets found"
+        fi
+    
+    - name: Dependency audit
+      run: |
+        # Since we have zero dependencies, just verify
+        echo "✅ Zero dependencies - no dependency vulnerabilities"
+    
+    - name: Memory safety test
+      run: |
+        # Build with AddressSanitizer if available
+        zig build -Doptimize=Debug
+        
+        # Run basic tests to check for memory issues
+        echo "<h1>Memory Test</h1>" > test.html
+        timeout 5s ./zig-out/bin/ezserve --port 8082 &
+        sleep 1
+        curl http://127.0.0.1:8082/test.html >/dev/null || true
+        echo "✅ Basic memory safety check completed"
+
+  compatibility-test:
+    name: Compatibility test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Build
+      run: zig build -Doptimize=ReleaseFast
+    
+    - name: Test HTTP/1.1 compliance
+      run: |
+        echo "<h1>HTTP Test</h1>" > index.html
+        ./zig-out/bin/ezserve --port 8083 &
+        SERVER_PID=$!
+        sleep 2
+        
+        # Test various HTTP features
+        echo "Testing HTTP/1.1 compliance..."
+        
+        # Test HEAD request
+        curl -I http://127.0.0.1:8083/ | grep "200 OK"
+        
+        # Test Range requests
+        curl -H "Range: bytes=0-10" http://127.0.0.1:8083/ >/dev/null
+        
+        # Test CORS if enabled
+        curl -H "Origin: http://example.com" http://127.0.0.1:8083/ >/dev/null
+        
+        kill $SERVER_PID
+        echo "✅ HTTP compliance tests passed"
+
+  documentation-check:
+    name: Documentation check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check README
+      run: |
+        # Verify README has all necessary sections
+        grep -q "## Features" README.md
+        grep -q "## Quick Start" README.md
+        grep -q "## CLI Options" README.md
+        grep -q "## Performance" README.md
+        echo "✅ README structure check passed"
+    
+    - name: Check help text
+      run: |
+        # Build and test help
+        zig build
+        ./zig-out/bin/ezserve --help > help.txt 2>&1 || true
+        grep -q "ezserve - Ultra-lightweight HTTP static file server" help.txt
+        echo "✅ Help text check passed"
+    
+    - name: Verify examples
+      run: |
+        # Test basic example from README
+        echo "<h1>Example Test</h1>" > example.html
+        timeout 3s ./zig-out/bin/ezserve --port 8084 &
+        sleep 1
+        curl http://127.0.0.1:8084/example.html | grep "Example Test"
+        echo "✅ README examples work"

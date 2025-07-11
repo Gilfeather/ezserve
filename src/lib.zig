@@ -52,7 +52,7 @@ pub fn getMimeType(path: []const u8) []const u8 {
             return "application/octet-stream";
         };
     }
-    
+
     // Find the last dot in the path
     if (std.mem.lastIndexOfScalar(u8, path, '.')) |dot_index| {
         const ext = path[dot_index..];
@@ -60,7 +60,7 @@ pub fn getMimeType(path: []const u8) []const u8 {
             return mime_type;
         }
     }
-    
+
     return "application/octet-stream";
 }
 

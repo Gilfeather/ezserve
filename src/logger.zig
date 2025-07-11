@@ -8,10 +8,10 @@ pub fn logAccess(method: []const u8, path: []const u8, status: u16, content_leng
     if (builtin.mode == .ReleaseFast and !log_json) {
         return; // Skip only standard logging in release mode
     }
-    
+
     // Fast timestamp and IP formatting
     const timestamp = std.time.timestamp();
-    
+
     // Ultra-fast IP formatting - avoid allocation for IPv4
     var ip_buf: [16]u8 = undefined;
     const client_ip = switch (addr.any.family) {
@@ -26,14 +26,11 @@ pub fn logAccess(method: []const u8, path: []const u8, status: u16, content_leng
         },
         else => "unknown",
     };
-    
+
     if (log_json) {
         // Optimized JSON output for production use
         var log_buf: [512]u8 = undefined;
-        const log_entry = try std.fmt.bufPrint(&log_buf, 
-            "{{\"timestamp\":{d},\"method\":\"{s}\",\"path\":\"{s}\",\"status\":{d},\"content_length\":{d},\"client_ip\":\"{s}\"}}", 
-            .{ timestamp, method, path, status, content_length, client_ip }
-        );
+        const log_entry = try std.fmt.bufPrint(&log_buf, "{{\"timestamp\":{d},\"method\":\"{s}\",\"path\":\"{s}\",\"status\":{d},\"content_length\":{d},\"client_ip\":\"{s}\"}}", .{ timestamp, method, path, status, content_length, client_ip });
         // Use stderr for unbuffered output (production logs)
         const stderr = std.io.getStdErr().writer();
         stderr.print("{s}\n", .{log_entry}) catch {};
