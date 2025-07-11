@@ -10,6 +10,7 @@ pub const Config = struct {
     log_json: bool = false,
     watch: bool = false,
     threads: ?u32 = null, // null = auto-detect, default max 8 for safety
+    open: bool = false, // Browser auto-open
 };
 
 pub const ResponseInfo = struct {
@@ -17,47 +18,37 @@ pub const ResponseInfo = struct {
     content_length: usize,
 };
 
-const MimeMap = std.StringHashMap([]const u8);
+// Compact MIME type mapping for smaller binary size
+const MimeEntry = struct { ext: []const u8, mime: []const u8 };
 
-var mime_map: ?MimeMap = null;
-
-pub fn initMimeMap() !MimeMap {
-    var map = MimeMap.init(std.heap.page_allocator);
-    try map.put(".html", "text/html");
-    try map.put(".htm", "text/html");
-    try map.put(".css", "text/css");
-    try map.put(".js", "application/javascript");
-    try map.put(".json", "application/json");
-    try map.put(".png", "image/png");
-    try map.put(".jpg", "image/jpeg");
-    try map.put(".jpeg", "image/jpeg");
-    try map.put(".gif", "image/gif");
-    try map.put(".svg", "image/svg+xml");
-    try map.put(".ico", "image/x-icon");
-    try map.put(".txt", "text/plain");
-    try map.put(".xml", "application/xml");
-    try map.put(".pdf", "application/pdf");
-    try map.put(".zip", "application/zip");
-    try map.put(".wasm", "application/wasm");
-    return map;
-}
+const mime_types = [_]MimeEntry{
+    .{ .ext = ".html", .mime = "text/html" },
+    .{ .ext = ".htm", .mime = "text/html" },
+    .{ .ext = ".css", .mime = "text/css" },
+    .{ .ext = ".js", .mime = "application/javascript" },
+    .{ .ext = ".json", .mime = "application/json" },
+    .{ .ext = ".png", .mime = "image/png" },
+    .{ .ext = ".jpg", .mime = "image/jpeg" },
+    .{ .ext = ".jpeg", .mime = "image/jpeg" },
+    .{ .ext = ".gif", .mime = "image/gif" },
+    .{ .ext = ".svg", .mime = "image/svg+xml" },
+    .{ .ext = ".ico", .mime = "image/x-icon" },
+    .{ .ext = ".txt", .mime = "text/plain" },
+    .{ .ext = ".xml", .mime = "application/xml" },
+    .{ .ext = ".pdf", .mime = "application/pdf" },
+    .{ .ext = ".zip", .mime = "application/zip" },
+    .{ .ext = ".wasm", .mime = "application/wasm" },
+};
 
 pub fn getMimeType(path: []const u8) []const u8 {
-    if (mime_map == null) {
-        mime_map = initMimeMap() catch {
-            // Fallback to simple detection if HashMap fails
-            if (std.mem.endsWith(u8, path, ".html")) return "text/html";
-            if (std.mem.endsWith(u8, path, ".css")) return "text/css";
-            if (std.mem.endsWith(u8, path, ".js")) return "application/javascript";
-            return "application/octet-stream";
-        };
-    }
+    // Find file extension
+    const dot_index = std.mem.lastIndexOfScalar(u8, path, '.') orelse return "application/octet-stream";
+    const ext = path[dot_index..];
     
-    // Find the last dot in the path
-    if (std.mem.lastIndexOfScalar(u8, path, '.')) |dot_index| {
-        const ext = path[dot_index..];
-        if (mime_map.?.get(ext)) |mime_type| {
-            return mime_type;
+    // Linear search through compact array (faster for small arrays)
+    for (mime_types) |entry| {
+        if (std.mem.eql(u8, ext, entry.ext)) {
+            return entry.mime;
         }
     }
     

@@ -1,4 +1,4 @@
-# 🚀 ezserve v0.2.0
+# 🚀 ezserve v0.3.0
 
 **Ultra-lightweight, zero-dependency development HTTP server written in Zig**
 
@@ -52,7 +52,9 @@ zig build test-integration   # Run integration tests only
 | `--cors`           | Add CORS headers                               | false     |
 | `--no-dirlist`     | Disable directory listing                      | false     |
 | `--log=json`       | Output access logs in JSON format (works in release builds) | false     |
+| `--threads <num>`  | Number of worker threads (default: auto, max 8) | auto      |
 | `--watch`          | Watch for file changes                         | false     |
+| `--open`           | Auto-open browser after server start          | false     |
 
 ## 🎯 Usage Examples
 
@@ -60,8 +62,14 @@ zig build test-integration   # Run integration tests only
 # Basic usage
 ./ezserve
 
+# Development mode (CORS + auto-open + file watching)
+./ezserve dev
+
 # For SPA development (Vue.js, React, etc.)
 ./ezserve --single-page --cors --port 3000
+
+# Development with custom settings
+./ezserve dev --port 3000 --root ./src
 
 # For LAN access
 ./ezserve --bind 0.0.0.0 --port 8080
@@ -105,12 +113,12 @@ zig build -Doptimize=ReleaseFast
 ### 🔮 Future Enhancements
 
 #### Version 0.3
-- [ ] `ezserve dev` command - Development mode with --watch + --open + --cors
-- [ ] File watching (`--watch` option)
-- [ ] Browser auto-open (`--open` flag)
-- [ ] Better HTTP/1.1 compliance
-- [ ] Range requests support
-- [ ] ETag support
+- [x] `ezserve dev` command - Development mode with --watch + --open + --cors
+- [x] File watching (`--watch` option)
+- [x] Browser auto-open (`--open` flag)
+- [x] Better HTTP/1.1 compliance
+- [x] Range requests support
+- [x] ETag support
 
 #### Version 0.4
 - [ ] Gzip compression support

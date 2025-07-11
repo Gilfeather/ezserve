@@ -1,6 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const poller = @import("poller.zig");
+const browser = @import("browser.zig");
+const watcher = @import("watcher.zig");
 
 const Config = @import("lib.zig").Config;
 
@@ -41,12 +43,43 @@ pub fn ultraPollerMain(_: std.mem.Allocator, config: Config) !void {
     _ = try std.posix.fcntl(server.stream.handle, std.posix.F.SETFL, flags | 0x0004); // O_NONBLOCK
     std.log.info("ezserve: http://{s}:{d} root={s} (ultra-poller)", .{config.bind, config.port, config.root});
 
+    // Auto-open browser if requested (conditional compilation for size optimization)
+    if (comptime @import("builtin").mode != .ReleaseSmall) {
+        if (config.open) {
+            const url = try std.fmt.allocPrint(shared_allocator, "http://{s}:{d}", .{config.bind, config.port});
+            defer shared_allocator.free(url);
+            browser.openBrowser(url, shared_allocator) catch {};
+        }
+    } else if (config.open) {
+        std.log.warn("Browser auto-open not available in minimal build", .{});
+    }
+
     // Initialize ultra poller
     var ultra_poller = try poller.UltraPoller.init(shared_allocator);
     defer ultra_poller.deinit();
     
     // Add server socket
     try ultra_poller.addServer(server.stream.handle);
+    
+    // Start file watcher if enabled (conditional compilation for size optimization)
+    if (comptime @import("builtin").mode != .ReleaseSmall) {
+        var file_watcher: ?watcher.FileWatcher = null;
+        var watcher_thread: ?std.Thread = null;
+        var should_stop_watcher = std.atomic.Value(bool).init(false);
+        
+        if (config.watch) {
+            file_watcher = watcher.FileWatcher.init(shared_allocator, config.root);
+            watcher_thread = try std.Thread.spawn(.{}, watcherThreadFunc, .{ &file_watcher.?, &should_stop_watcher });
+        }
+        defer {
+            if (config.watch) {
+                should_stop_watcher.store(true, .monotonic);
+                if (watcher_thread) |thread| thread.join();
+            }
+        }
+    } else if (config.watch) {
+        std.log.warn("File watching not available in minimal build", .{});
+    }
     
     // Multi-threaded event loop for maximum performance
     try ultra_poller.multiThreadEventLoop(&server, config, shared_allocator);
@@ -84,6 +117,17 @@ pub fn mainSync(_: std.mem.Allocator, config: Config) !void {
     };
     defer server.deinit();
     std.log.info("ezserve: http://{s}:{d} root={s} (optimized sync mode)", .{config.bind, config.port, config.root});
+
+    // Auto-open browser if requested (conditional compilation for size optimization)
+    if (comptime @import("builtin").mode != .ReleaseSmall) {
+        if (config.open) {
+            const url = try std.fmt.allocPrint(shared_allocator, "http://{s}:{d}", .{config.bind, config.port});
+            defer shared_allocator.free(url);
+            browser.openBrowser(url, shared_allocator) catch {};
+        }
+    } else if (config.open) {
+        std.log.warn("Browser auto-open not available in minimal build", .{});
+    }
 
     // Use configured or optimal number of threads
     const num_threads = if (config.threads) |t| 
@@ -139,4 +183,9 @@ fn workerThread(server: *std.net.Server, config: Config, shared_allocator: std.m
             }
         };
     }
+}
+
+// File watcher thread function
+fn watcherThreadFunc(file_watcher: *watcher.FileWatcher, should_stop: *std.atomic.Value(bool)) void {
+    file_watcher.watchLoop(should_stop);
 }

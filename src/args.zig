@@ -9,6 +9,7 @@ pub fn printHelp() void {
         \\
         \\USAGE:
         \\    ezserve [OPTIONS]
+        \\    ezserve dev [OPTIONS]    # Development mode with --cors --open --watch
         \\
         \\OPTIONS:
         \\    --port <number>     Port to listen on (default: 8000)
@@ -20,6 +21,7 @@ pub fn printHelp() void {
         \\    --log=json          Output access logs in JSON format
         \\    --threads <number>  Number of worker threads (default: auto, max 8)
         \\    --watch             File watching mode (TODO)
+        \\    --open              Auto-open browser after server start
         \\    --help, -h          Show this help message
         \\
         \\EXAMPLES:
@@ -29,6 +31,7 @@ pub fn printHelp() void {
         \\    ezserve --single-page --no-dirlist   # SPA deployment mode
         \\    ezserve --root ./dist --log=json     # Serve build directory with JSON logs
         \\    ezserve --threads 16 --bind 0.0.0.0  # High-performance server with 16 threads
+        \\    ezserve --open --cors --single-page  # Development mode with auto-open
         \\
         \\For more information, visit: https://github.com/tomas/ezserve
         \\
@@ -41,9 +44,22 @@ pub fn parseArgs(allocator: std.mem.Allocator) !Config {
     defer std.process.argsFree(allocator, args);
 
     var config = Config{};
+    
+    // Check for 'dev' subcommand
+    var start_index: usize = 1;
+    if (args.len > 1 and std.mem.eql(u8, args[1], "dev")) {
+        // Enable development defaults
+        config.cors = true;
+        config.open = true;
+        config.watch = true;
+        start_index = 2;
+        if (comptime @import("builtin").mode != .ReleaseSmall) {
+            std.log.info("Development mode enabled: CORS + auto-open + file watching", .{});
+        }
+    }
 
     // Simple argument parsing
-    var i: usize = 1;
+    var i: usize = start_index;
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--help") or std.mem.eql(u8, args[i], "-h")) {
             printHelp();
@@ -78,6 +94,8 @@ pub fn parseArgs(allocator: std.mem.Allocator) !Config {
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--watch")) {
             config.watch = true;
+        } else if (std.mem.eql(u8, args[i], "--open")) {
+            config.open = true;
         } else if (std.mem.startsWith(u8, args[i], "--")) {
             std.log.err("Unknown option: {s}", .{args[i]});
             std.log.err("Use --help to see available options", .{});
