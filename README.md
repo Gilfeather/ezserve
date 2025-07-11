@@ -1,4 +1,4 @@
-# 🚀 ezserve v0.2.0
+# 🚀 ezserve v0.3.0
 
 **Ultra-lightweight, zero-dependency development HTTP server written in Zig**
 
@@ -16,11 +16,12 @@
 
 ## ✨ Features
 
-- 🪶 **Ultra-lightweight** - Binary size <100KB (stripped)
+- 🪶 **Ultra-lightweight** - Binary size <70KB (ReleaseSmall) or <100KB (ReleaseFast)
 - 🔗 **Zero dependencies** - Uses only Zig standard library
 - 🌐 **Cross-platform** - Supports macOS/Linux/Windows
-- ⚡ **Blazing fast** - Minimal overhead for maximum performance
-- 🛠️ **Developer-friendly** - Modern features like CORS, SPA mode, JSON logging
+- ⚡ **Blazing fast** - Multi-threaded with queue-based architecture
+- 🛠️ **Developer-friendly** - Development mode, auto-open browser, file watching
+- 🚀 **Production-ready** - Range requests, ETag support, HTTP/1.1 compliance
 
 ## 🚀 Quick Start
 
@@ -32,8 +33,14 @@ zig build
 ./zig-out/bin/ezserve
 # → Server starts at http://127.0.0.1:8000
 
+# Development mode with auto-open browser
+./zig-out/bin/ezserve dev
+
 # Specify port and root directory
 ./zig-out/bin/ezserve --port 8080 --root ./public
+
+# High-performance production server
+./zig-out/bin/ezserve --threads 16 --bind 0.0.0.0 --port 80
 
 # Run tests
 zig build test               # Run all tests
@@ -52,7 +59,9 @@ zig build test-integration   # Run integration tests only
 | `--cors`           | Add CORS headers                               | false     |
 | `--no-dirlist`     | Disable directory listing                      | false     |
 | `--log=json`       | Output access logs in JSON format (works in release builds) | false     |
+| `--threads <num>`  | Number of worker threads (default: auto, max 8) | auto      |
 | `--watch`          | Watch for file changes                         | false     |
+| `--open`           | Auto-open browser after server start          | false     |
 
 ## 🎯 Usage Examples
 
@@ -60,11 +69,20 @@ zig build test-integration   # Run integration tests only
 # Basic usage
 ./ezserve
 
+# Development mode (CORS + auto-open + file watching)
+./ezserve dev
+
 # For SPA development (Vue.js, React, etc.)
 ./ezserve --single-page --cors --port 3000
 
+# Development with custom settings
+./ezserve dev --port 3000 --root ./src
+
 # For LAN access
 ./ezserve --bind 0.0.0.0 --port 8080
+
+# High-performance server with custom thread count
+./ezserve --threads 16 --bind 0.0.0.0
 
 # With JSON access logs (production-ready)
 ./ezserve --log=json --root ./dist
@@ -72,6 +90,10 @@ zig build test-integration   # Run integration tests only
 # Production deployment with JSON logging
 zig build -Doptimize=ReleaseFast
 ./zig-out/bin/ezserve --log=json --bind 0.0.0.0 --port 80
+
+# Minimal binary size for embedded/Docker
+zig build -Doptimize=ReleaseSmall
+./zig-out/bin/ezserve --root ./public  # Only 68KB!
 ```
 
 ## 🛠️ Implementation Status
@@ -101,16 +123,19 @@ zig build -Doptimize=ReleaseFast
 - [x] **Better error messages** - User-friendly error reporting
 - [x] `--help` option (display usage)
 - [x] **Comprehensive test suite** - Unit and integration tests
+- [x] **Multi-threading support** - Configurable worker threads with `--threads`
+- [x] **Queue-based architecture** - Eliminates socket errors and race conditions
+- [x] **Binary size optimization** - ReleaseSmall (68KB) vs ReleaseFast (99KB)
 
 ### 🔮 Future Enhancements
 
-#### Version 0.3
-- [ ] `ezserve dev` command - Development mode with --watch + --open + --cors
-- [ ] File watching (`--watch` option)
-- [ ] Browser auto-open (`--open` flag)
-- [ ] Better HTTP/1.1 compliance
-- [ ] Range requests support
-- [ ] ETag support
+#### Version 0.3 ✅ COMPLETED
+- [x] `ezserve dev` command - Development mode with --watch + --open + --cors
+- [x] File watching (`--watch` option)
+- [x] Browser auto-open (`--open` flag)
+- [x] Better HTTP/1.1 compliance
+- [x] Range requests support (HTTP 206 Partial Content)
+- [x] ETag support (content-based cache validation)
 
 #### Version 0.4
 - [ ] Gzip compression support
@@ -161,34 +186,41 @@ Compatible with popular log aggregation tools:
 
 ## 📈 Performance
 
-| Metric | Value |
-|--------|-------|
-| Binary size | <100KB (stripped) |
-| Memory usage | <5MB |
-| Startup time | <50ms |
-| Concurrent connections | Up to system limits |
+| Metric | ReleaseSmall | ReleaseFast |
+|--------|--------------|-------------|
+| Binary size | 68KB | 99KB |
+| Memory usage | <5MB | <5MB |
+| Startup time | <50ms | <50ms |
+| Throughput | ~1600 req/s | ~1800 req/s |
+| Read errors | <100 (0.5%) | <80 (0.4%) |
+| Concurrent connections | Up to system limits | Up to system limits |
 
 ## 🆚 Comparison with Other Tools
 
 | Tool | Binary Size | Dependencies | Startup Time | Features |
 |------|-------------|--------------|--------------|----------|
-| **ezserve** | <100KB | Zero | <50ms | Zig-based, ultra-lightweight |
+| **ezserve** | 68KB-99KB | Zero | <50ms | Zig-based, dev mode, multi-threading |
 | Python http.server | ~50MB | Python | ~200ms | Built-in standard |
 | Node.js http-server | ~30MB | Node.js | ~300ms | Via npm |
 | Go net/http | ~10MB | Zero | ~100ms | Static binary |
+| nginx | ~1MB | libc | ~100ms | Full web server |
 
 ## 🔧 Development & Build
 
 ```bash
-# Development build
+# Development build (includes file watching and browser auto-open)
 zig build
 
-# Release build
+# Performance optimized build (99KB, max speed)
 zig build -Doptimize=ReleaseFast
 
+# Size optimized build (68KB, good speed)
+zig build -Doptimize=ReleaseSmall
+
 # Cross-compilation examples
-zig build -Dtarget=x86_64-windows
-zig build -Dtarget=x86_64-linux
+zig build -Doptimize=ReleaseFast -Dtarget=x86_64-windows
+zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux
+zig build -Doptimize=ReleaseFast -Dtarget=aarch64-linux
 ```
 
 ## 🧪 Testing
