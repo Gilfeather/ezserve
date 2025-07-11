@@ -1,0 +1,167 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build-and-upload:
+    name: Build and upload release assets
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux
+            name: ezserve-linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-linux
+            name: ezserve-linux-aarch64
+          - os: macos-latest
+            target: x86_64-macos
+            name: ezserve-macos-x86_64
+          - os: macos-latest
+            target: aarch64-macos
+            name: ezserve-macos-aarch64
+          - os: windows-latest
+            target: x86_64-windows
+            name: ezserve-windows-x86_64
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Build ReleaseFast
+      run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
+    
+    - name: Build ReleaseSmall
+      run: zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }}
+    
+    - name: Package releases (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        # ReleaseFast version
+        cp zig-out/bin/ezserve ${{ matrix.name }}-fast
+        tar -czf ${{ matrix.name }}-fast.tar.gz ${{ matrix.name }}-fast
+        
+        # ReleaseSmall version
+        zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }}
+        cp zig-out/bin/ezserve ${{ matrix.name }}-small
+        tar -czf ${{ matrix.name }}-small.tar.gz ${{ matrix.name }}-small
+    
+    - name: Package releases (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # ReleaseFast version
+        copy zig-out\bin\ezserve.exe ${{ matrix.name }}-fast.exe
+        7z a ${{ matrix.name }}-fast.zip ${{ matrix.name }}-fast.exe
+        
+        # ReleaseSmall version
+        zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }}
+        copy zig-out\bin\ezserve.exe ${{ matrix.name }}-small.exe
+        7z a ${{ matrix.name }}-small.zip ${{ matrix.name }}-small.exe
+    
+    - name: Upload ReleaseFast
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ${{ matrix.name }}-fast.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+        asset_name: ${{ matrix.name }}-fast.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+        asset_content_type: application/octet-stream
+    
+    - name: Upload ReleaseSmall
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ${{ matrix.name }}-small.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+        asset_name: ${{ matrix.name }}-small.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+        asset_content_type: application/octet-stream
+
+  homebrew:
+    name: Update Homebrew formula
+    runs-on: macos-latest
+    needs: build-and-upload
+    if: github.event.release.tag_name
+    
+    steps:
+    - name: Update Homebrew formula
+      run: |
+        echo "🍺 Homebrew formula update would go here"
+        echo "Version: ${{ github.event.release.tag_name }}"
+        # This would typically update a Homebrew tap repository
+
+  docker-release:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    needs: build-and-upload
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Docker Hub
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ezserve/ezserve
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+    
+    - name: Create Dockerfile
+      run: |
+        cat > Dockerfile << 'EOF'
+        FROM alpine:latest AS builder
+        RUN apk add --no-cache curl xz
+        
+        # Install Zig
+        RUN curl -L https://ziglang.org/download/0.14.1/zig-linux-x86_64-0.14.1.tar.xz | tar -xJ
+        ENV PATH="/zig-linux-x86_64-0.14.1:$PATH"
+        
+        WORKDIR /app
+        COPY . .
+        RUN zig build -Doptimize=ReleaseSmall
+        
+        FROM alpine:latest
+        RUN apk add --no-cache ca-certificates
+        COPY --from=builder /app/zig-out/bin/ezserve /usr/local/bin/ezserve
+        
+        # Create non-root user
+        RUN addgroup -g 1001 -S ezserve && \
+            adduser -u 1001 -S ezserve -G ezserve
+        
+        USER ezserve
+        WORKDIR /app
+        EXPOSE 8000
+        
+        ENTRYPOINT ["ezserve"]
+        CMD ["--bind", "0.0.0.0"]
+        EOF
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
