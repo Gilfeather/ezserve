@@ -1,0 +1,344 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        zig-version: ['0.14.1']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: ${{ matrix.zig-version }}
+    
+    - name: Verify Zig installation
+      run: zig version
+    
+    - name: Run unit tests
+      run: zig build test-unit
+    
+    - name: Run integration tests
+      run: zig build test-integration
+    
+    - name: Build debug
+      run: zig build
+    
+    - name: Build ReleaseFast
+      run: zig build -Doptimize=ReleaseFast
+    
+    - name: Build ReleaseSmall
+      run: zig build -Doptimize=ReleaseSmall
+
+  build-cross-platform:
+    name: Cross-platform builds
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-linux
+          - aarch64-linux
+          - x86_64-windows
+          - x86_64-macos
+          - aarch64-macos
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Build for ${{ matrix.target }}
+      run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ezserve-${{ matrix.target }}
+        path: zig-out/bin/ezserve*
+
+  benchmark:
+    name: Performance benchmark
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Install wrk
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wrk
+    
+    - name: Build ReleaseFast
+      run: zig build -Doptimize=ReleaseFast
+    
+    - name: Create test file
+      run: echo "<h1>Hello World</h1>" > index.html
+    
+    - name: Start server in background
+      run: |
+        ./zig-out/bin/ezserve --port 8080 &
+        sleep 2
+    
+    - name: Run benchmark
+      run: |
+        wrk -t4 -c100 -d5s http://127.0.0.1:8080/ > benchmark.txt
+        cat benchmark.txt
+    
+    - name: Check performance baseline
+      run: |
+        # Extract requests per second
+        RPS=$(cat benchmark.txt | grep "Requests/sec:" | awk '{print $2}')
+        echo "Performance: $RPS req/sec"
+        # Basic performance check (should be > 1000 req/sec)
+        if (( $(echo "$RPS > 1000" | bc -l) )); then
+          echo "✅ Performance test passed: $RPS req/sec"
+        else
+          echo "❌ Performance test failed: $RPS req/sec (expected > 1000)"
+          exit 1
+        fi
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Build with security checks
+      run: zig build -Doptimize=ReleaseSafe
+    
+    - name: Run basic security checks
+      run: |
+        # Check for common security issues in binary
+        if command -v strings >/dev/null 2>&1; then
+          # Look for potential security issues
+          strings zig-out/bin/ezserve | grep -E "(password|secret|key)" || true
+        fi
+
+  binary-size:
+    name: Binary size analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Build ReleaseFast
+      run: zig build -Doptimize=ReleaseFast
+    
+    - name: Build ReleaseSmall
+      run: zig build -Doptimize=ReleaseSmall
+    
+    - name: Analyze binary sizes
+      run: |
+        echo "## Binary Size Analysis"
+        echo "| Build Mode | Size | Target |"
+        echo "|------------|------|--------|"
+        
+        # ReleaseFast
+        FAST_SIZE=$(stat -c%s zig-out/bin/ezserve)
+        echo "| ReleaseFast | ${FAST_SIZE} bytes | < 120KB |"
+        
+        # ReleaseSmall
+        zig build -Doptimize=ReleaseSmall
+        SMALL_SIZE=$(stat -c%s zig-out/bin/ezserve)
+        echo "| ReleaseSmall | ${SMALL_SIZE} bytes | < 80KB |"
+        
+        # Verify size constraints
+        if [ $FAST_SIZE -gt 122880 ]; then  # 120KB
+          echo "❌ ReleaseFast binary too large: ${FAST_SIZE} bytes"
+          exit 1
+        fi
+        
+        if [ $SMALL_SIZE -gt 81920 ]; then  # 80KB
+          echo "❌ ReleaseSmall binary too large: ${SMALL_SIZE} bytes"
+          exit 1
+        fi
+        
+        echo "✅ All binary size constraints met"
+
+  lint:
+    name: Code quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Check code formatting
+      run: |
+        # Check if code is properly formatted
+        zig fmt --check src/
+    
+    - name: Static analysis
+      run: |
+        # Run Zig's built-in static analysis
+        zig build-exe src/main.zig -fno-emit-bin --name ezserve
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Build server
+      run: zig build -Doptimize=ReleaseFast
+    
+    - name: Test basic functionality
+      run: |
+        # Create test files
+        mkdir -p test_files
+        echo "<h1>Test Page</h1>" > test_files/index.html
+        echo "body { color: blue; }" > test_files/style.css
+        
+        # Start server
+        ./zig-out/bin/ezserve --root test_files --port 8090 &
+        SERVER_PID=$!
+        sleep 2
+        
+        # Test basic GET request
+        curl -f http://127.0.0.1:8090/ | grep "Test Page"
+        
+        # Test CSS file
+        curl -f http://127.0.0.1:8090/style.css | grep "color: blue"
+        
+        # Test 404
+        if curl -f http://127.0.0.1:8090/nonexistent.html 2>/dev/null; then
+          echo "❌ Should have returned 404"
+          exit 1
+        fi
+        
+        # Test HEAD request
+        curl -I http://127.0.0.1:8090/ | grep "200 OK"
+        
+        # Cleanup
+        kill $SERVER_PID
+        echo "✅ All integration tests passed"
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Create Dockerfile
+      run: |
+        cat > Dockerfile << 'EOF'
+        FROM alpine:latest AS builder
+        RUN apk add --no-cache curl xz
+        
+        # Install Zig
+        RUN curl -L https://ziglang.org/download/0.14.1/zig-linux-x86_64-0.14.1.tar.xz | tar -xJ
+        ENV PATH="/zig-linux-x86_64-0.14.1:$PATH"
+        
+        WORKDIR /app
+        COPY . .
+        RUN zig build -Doptimize=ReleaseSmall
+        
+        FROM scratch
+        COPY --from=builder /app/zig-out/bin/ezserve /ezserve
+        EXPOSE 8000
+        ENTRYPOINT ["/ezserve"]
+        EOF
+    
+    - name: Build Docker image
+      run: docker build -t ezserve:latest .
+    
+    - name: Test Docker image
+      run: |
+        # Create test content
+        echo "<h1>Docker Test</h1>" > index.html
+        
+        # Run container
+        docker run -d --name ezserve-test -p 8091:8000 -v "$(pwd):/app" ezserve:latest --root /app
+        sleep 2
+        
+        # Test
+        curl -f http://127.0.0.1:8091/ | grep "Docker Test"
+        
+        # Cleanup
+        docker stop ezserve-test
+        docker rm ezserve-test
+        echo "✅ Docker test passed"
+
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    needs: [test, build-cross-platform, benchmark, binary-size]
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.14.1
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+    
+    - name: Create release assets
+      run: |
+        mkdir -p release
+        
+        # Package each target
+        for target in x86_64-linux aarch64-linux x86_64-windows x86_64-macos aarch64-macos; do
+          cd ezserve-$target
+          if [ "$target" = "x86_64-windows" ]; then
+            zip ../release/ezserve-$target.zip ezserve.exe
+          else
+            tar -czf ../release/ezserve-$target.tar.gz ezserve
+          fi
+          cd ..
+        done
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release/*
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
