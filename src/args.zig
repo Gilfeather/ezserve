@@ -18,6 +18,7 @@ pub fn printHelp() void {
         \\    --single-page       SPA mode - fallback to index.html on 404
         \\    --no-dirlist        Disable directory listing
         \\    --log=json          Output access logs in JSON format
+        \\    --threads <number>  Number of worker threads (default: auto, max 8)
         \\    --watch             File watching mode (TODO)
         \\    --help, -h          Show this help message
         \\
@@ -27,6 +28,7 @@ pub fn printHelp() void {
         \\    ezserve --bind 0.0.0.0 --port 80     # Production server on all interfaces
         \\    ezserve --single-page --no-dirlist   # SPA deployment mode
         \\    ezserve --root ./dist --log=json     # Serve build directory with JSON logs
+        \\    ezserve --threads 16 --bind 0.0.0.0  # High-performance server with 16 threads
         \\
         \\For more information, visit: https://github.com/tomas/ezserve
         \\
@@ -67,6 +69,13 @@ pub fn parseArgs(allocator: std.mem.Allocator) !Config {
             config.no_dirlist = true;
         } else if (std.mem.eql(u8, args[i], "--log=json")) {
             config.log_json = true;
+        } else if (std.mem.eql(u8, args[i], "--threads") and i + 1 < args.len) {
+            config.threads = std.fmt.parseInt(u32, args[i+1], 10) catch {
+                std.log.err("Invalid thread count: {s}", .{args[i+1]});
+                std.log.err("Thread count must be a positive number", .{});
+                std.process.exit(1);
+            };
+            i += 1;
         } else if (std.mem.eql(u8, args[i], "--watch")) {
             config.watch = true;
         } else if (std.mem.startsWith(u8, args[i], "--")) {
