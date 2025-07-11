@@ -243,6 +243,9 @@ pub const UltraPoller = struct {
             };
             conn_count += 1;
             
+            // Set socket timeout for robust I/O
+            self.setSocketTimeout(conn.stream.handle) catch {};
+            
             // Add to queue for workers
             self.conn_queue.push(conn) catch |err| {
                 // If queue is full, close connection
@@ -252,6 +255,22 @@ pub const UltraPoller = struct {
                 }
             };
         }
+    }
+    
+    // Set socket timeout for robust I/O
+    fn setSocketTimeout(self: *Self, socket_fd: std.posix.socket_t) !void {
+        _ = self; // suppress unused parameter warning
+        
+        const timeout = std.posix.timeval{
+            .sec = 2,  // 2 second timeout for faster error detection
+            .usec = 0,
+        };
+        
+        // Set receive timeout
+        _ = std.posix.setsockopt(socket_fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch {};
+        
+        // Set send timeout  
+        _ = std.posix.setsockopt(socket_fd, std.posix.SOL.SOCKET, std.posix.SO.SNDTIMEO, std.mem.asBytes(&timeout)) catch {};
     }
     
     // macOS kqueue event loop - ULTRA FAST
@@ -333,7 +352,7 @@ fn queueWorkerThread(conn_queue: *ConnectionQueue, config: Config, shared_alloca
         // Get connection from queue - blocks until available
         const conn = conn_queue.tryPop() orelse {
             // No connection available, brief sleep
-            std.time.sleep(1_000_000); // 1ms
+            std.time.sleep(100_000); // 100μs for better responsiveness
             continue;
         };
         defer conn.stream.close();

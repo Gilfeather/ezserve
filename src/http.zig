@@ -17,24 +17,34 @@ pub fn handleRequest(reader: anytype, writer: anytype, addr: std.net.Address, co
     var req_line_len: usize = 0;
     var found_req_line = false;
     
-    // --- Optimized request line reading with single attempt ---
-    const n = reader.read(&req_line_buf) catch |err| {
-        if (err == error.WouldBlock) {
-            try writer.writeAll("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
-            return false;
+    // --- Robust HTTP request line reading with retries ---
+    var retry_count: u8 = 0;
+    while (!found_req_line and retry_count < 20) {
+        const n = reader.read(req_line_buf[req_line_len..]) catch |err| {
+            if (err == error.WouldBlock) {
+                retry_count += 1;
+                std.time.sleep(10_000); // 10μs wait for data
+                continue;
+            }
+            return err;
+        };
+        if (n == 0) {
+            if (req_line_len == 0) {
+                try writer.writeAll("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
+                return false;
+            }
+            break; // EOF
         }
-        return err;
-    };
-    if (n == 0) {
-        try writer.writeAll("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
-        return false;
-    }
-    req_line_len = n;
-    
-    // Check for newline (end of request line)
-    if (std.mem.indexOfScalar(u8, req_line_buf[0..req_line_len], '\n')) |idx| {
-        found_req_line = true;
-        req_line_len = idx + 1;
+        req_line_len += n;
+        
+        // Check for newline (end of request line)
+        if (std.mem.indexOfScalar(u8, req_line_buf[0..req_line_len], '\n')) |idx| {
+            found_req_line = true;
+            req_line_len = idx + 1;
+            break;
+        }
+        
+        if (req_line_len >= req_line_buf.len) break; // Buffer full
     }
     
     if (!found_req_line) {
@@ -49,10 +59,27 @@ pub fn handleRequest(reader: anytype, writer: anytype, addr: std.net.Address, co
     const method = std.mem.trim(u8, it.next() orelse "", " \r\n\t");
     const path = std.mem.trim(u8, it.next() orelse "/", " \r\n\t");
     
-    // --- Simplified header reading for maximum speed ---
+    // --- Robust header reading with retries ---
     var header_len: usize = 0;
-    const header_read = reader.read(&header_buf) catch 0;
-    header_len = header_read;
+    var header_retry_count: u8 = 0;
+    while (header_len < header_buf.len and header_retry_count < 10) {
+        const n = reader.read(header_buf[header_len..]) catch |err| {
+            if (err == error.WouldBlock) {
+                header_retry_count += 1;
+                std.time.sleep(10_000); // 10μs wait for data
+                continue;
+            }
+            break; // Other errors, use what we have
+        };
+        if (n == 0) break; // EOF
+        header_len += n;
+        
+        // Check for end of headers
+        if (std.mem.indexOf(u8, header_buf[0..header_len], "\r\n\r\n") != null or 
+            std.mem.indexOf(u8, header_buf[0..header_len], "\n\n") != null) {
+            break; // Complete headers received
+        }
+    }
     
     // --- Parse headers for keep-alive and range detection ---
     var keep_alive = false;
