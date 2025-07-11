@@ -18,7 +18,7 @@
 
 - 🪶 **Ultra-lightweight** - Binary size <70KB (ReleaseSmall) or <100KB (ReleaseFast)
 - 🔗 **Zero dependencies** - Uses only Zig standard library
-- 🌐 **Cross-platform** - Supports macOS/Linux/Windows
+- 🌐 **Cross-platform** - Supports macOS/Linux (Windows currently unsupported)
 - ⚡ **Blazing fast** - Multi-threaded with queue-based architecture
 - 🛠️ **Developer-friendly** - Development mode, auto-open browser, file watching
 - 🚀 **Production-ready** - Range requests, ETag support, HTTP/1.1 compliance
