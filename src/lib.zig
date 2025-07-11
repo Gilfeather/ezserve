@@ -9,6 +9,7 @@ pub const Config = struct {
     no_dirlist: bool = false,
     log_json: bool = false,
     watch: bool = false,
+    threads: ?u32 = null, // null = auto-detect, default max 8 for safety
 };
 
 pub const ResponseInfo = struct {
