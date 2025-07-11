@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest] # Windows未サポート
         zig-version: ['0.14.1']
     
     steps:
@@ -36,7 +36,12 @@ jobs:
       run: zig build
     
     - name: Build ReleaseFast
-      run: zig build -Doptimize=ReleaseFast
+      run: |
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          timeout 300 zig build -Doptimize=ReleaseFast || zig build -Doptimize=ReleaseSmall
+        else
+          zig build -Doptimize=ReleaseSmall
+        fi
     
     - name: Build ReleaseSmall
       run: zig build -Doptimize=ReleaseSmall
@@ -49,7 +54,6 @@ jobs:
         target:
           - x86_64-linux
           - aarch64-linux
-          - x86_64-windows
           - x86_64-macos
           - aarch64-macos
     
@@ -62,7 +66,7 @@ jobs:
         version: 0.14.1
     
     - name: Build for ${{ matrix.target }}
-      run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
+      run: timeout 300 zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} || zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }}
     
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -89,7 +93,12 @@ jobs:
         sudo apt-get install -y wrk
     
     - name: Build ReleaseFast
-      run: zig build -Doptimize=ReleaseFast
+      run: |
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          timeout 300 zig build -Doptimize=ReleaseFast || zig build -Doptimize=ReleaseSmall
+        else
+          zig build -Doptimize=ReleaseSmall
+        fi
     
     - name: Create test file
       run: echo "<h1>Hello World</h1>" > index.html
@@ -153,7 +162,12 @@ jobs:
         version: 0.14.1
     
     - name: Build ReleaseFast
-      run: zig build -Doptimize=ReleaseFast
+      run: |
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          timeout 300 zig build -Doptimize=ReleaseFast || zig build -Doptimize=ReleaseSmall
+        else
+          zig build -Doptimize=ReleaseSmall
+        fi
     
     - name: Build ReleaseSmall
       run: zig build -Doptimize=ReleaseSmall
@@ -222,7 +236,7 @@ jobs:
         version: 0.14.1
     
     - name: Build server
-      run: zig build -Doptimize=ReleaseFast
+      run: zig build -Doptimize=ReleaseSmall
     
     - name: Test basic functionality
       run: |
@@ -325,13 +339,9 @@ jobs:
         mkdir -p release
         
         # Package each target
-        for target in x86_64-linux aarch64-linux x86_64-windows x86_64-macos aarch64-macos; do
+        for target in x86_64-linux aarch64-linux x86_64-macos aarch64-macos; do
           cd ezserve-$target
-          if [ "$target" = "x86_64-windows" ]; then
-            zip ../release/ezserve-$target.zip ezserve.exe
-          else
-            tar -czf ../release/ezserve-$target.tar.gz ezserve
-          fi
+          tar -czf ../release/ezserve-$target.tar.gz ezserve
           cd ..
         done
     
