@@ -51,7 +51,7 @@ zig build test-integration   # Run integration tests only
 | `--single-page`    | SPA mode (return index.html on 404)           | false     |
 | `--cors`           | Add CORS headers                               | false     |
 | `--no-dirlist`     | Disable directory listing                      | false     |
-| `--log=json`       | Output access logs in JSON format             | false     |
+| `--log=json`       | Output access logs in JSON format (works in release builds) | false     |
 | `--watch`          | Watch for file changes                         | false     |
 
 ## 🎯 Usage Examples
@@ -66,8 +66,12 @@ zig build test-integration   # Run integration tests only
 # For LAN access
 ./ezserve --bind 0.0.0.0 --port 8080
 
-# With JSON access logs
+# With JSON access logs (production-ready)
 ./ezserve --log=json --root ./dist
+
+# Production deployment with JSON logging
+zig build -Doptimize=ReleaseFast
+./zig-out/bin/ezserve --log=json --bind 0.0.0.0 --port 80
 ```
 
 ## 🛠️ Implementation Status
@@ -116,6 +120,44 @@ zig build test-integration   # Run integration tests only
 - [ ] Plugin system
 - [ ] WebSocket proxy
 - [ ] Load balancing
+
+## 📊 JSON Logging
+
+ezserve supports structured JSON logging for production environments:
+
+### Development vs Production Logging
+
+```bash
+# Development: Standard logs only (debug builds)
+./ezserve
+# Output: 127.0.0.1 GET 200 1024 /index.html
+
+# Production: JSON logs work in release builds
+zig build -Doptimize=ReleaseFast
+./zig-out/bin/ezserve --log=json
+# Output: {"timestamp":1703123456,"method":"GET","path":"/","status":200,"content_length":1024,"client_ip":"127.0.0.1"}
+```
+
+### JSON Log Format
+
+```json
+{
+  "timestamp": 1703123456,
+  "method": "GET", 
+  "path": "/index.html",
+  "status": 200,
+  "content_length": 1024,
+  "client_ip": "192.168.1.100"
+}
+```
+
+### Log Aggregation Integration
+
+Compatible with popular log aggregation tools:
+- **ELK Stack**: Direct Elasticsearch ingestion
+- **Grafana Loki**: Structured log queries
+- **Fluentd/Vector**: JSON parsing ready
+- **CloudWatch/Datadog**: Production monitoring
 
 ## 📈 Performance
 
