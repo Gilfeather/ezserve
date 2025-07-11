@@ -81,19 +81,16 @@ zig build test-integration   # Run integration tests only
 # For LAN access
 ./ezserve --bind 0.0.0.0 --port 8080
 
+
 # High-performance server with custom thread count
 ./ezserve --threads 16 --bind 0.0.0.0
 
-# With JSON access logs (production-ready)
-./ezserve --log=json --root ./dist
 
-# Production deployment with JSON logging
-zig build -Doptimize=ReleaseFast
-./zig-out/bin/ezserve --log=json --bind 0.0.0.0 --port 80
 
 # Minimal binary size for embedded/Docker
 zig build -Doptimize=ReleaseSmall
 ./zig-out/bin/ezserve --root ./public  # Only 68KB!
+
 ```
 
 ## 🛠️ Implementation Status
