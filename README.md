@@ -197,7 +197,7 @@ Compatible with popular log aggregation tools:
 | Concurrent connections | Up to system limits | Up to system limits |
 
 ### Test Environment
-- **Platform**: macOS (Apple Silicon)  
+- **Platform**: macOS (Intel)  
 - **Test tool**: wrk (4 threads, 100 connections)
 - **Architecture**: UltraPoller with queue-based multi-threading
 
