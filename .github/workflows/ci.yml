@@ -92,8 +92,9 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y wrk
     
-    - name: Build ReleaseFast
+    - name: Build for benchmark
       run: |
+        # Build ReleaseFast for performance testing  
         if [ "$RUNNER_OS" = "Linux" ]; then
           timeout 300 zig build -Doptimize=ReleaseFast || zig build -Doptimize=ReleaseSmall
         else
@@ -103,21 +104,43 @@ jobs:
     - name: Create test file
       run: echo "<h1>Hello World</h1>" > index.html
     
-    - name: Start server in background
+    - name: Start server and run benchmark
       run: |
+        # Start server in background
         ./zig-out/bin/ezserve --port 8080 &
-        sleep 2
-    
-    - name: Run benchmark
-      run: |
-        wrk -t4 -c100 -d5s http://127.0.0.1:8080/ > benchmark.txt
+        SERVER_PID=$!
+        
+        # Wait for server to be ready
+        sleep 3
+        
+        # Check if server is responding
+        if ! curl -f http://127.0.0.1:8080/ > /dev/null 2>&1; then
+          echo "❌ Server is not responding"
+          kill $SERVER_PID 2>/dev/null || true
+          exit 1
+        fi
+        
+        echo "✅ Server is responding, starting benchmark..."
+        
+        # Run benchmark
+        wrk -t4 -c100 -d5s http://127.0.0.1:8080/ > benchmark.txt 2>&1
+        
+        # Stop server
+        kill $SERVER_PID 2>/dev/null || true
+        
+        # Show benchmark results
         cat benchmark.txt
-    
-    - name: Check performance baseline
-      run: |
+        
         # Extract requests per second
-        RPS=$(cat benchmark.txt | grep "Requests/sec:" | awk '{print $2}')
+        RPS=$(cat benchmark.txt | grep "Requests/sec:" | awk '{print $2}' | head -1)
+        
+        if [ -z "$RPS" ]; then
+          echo "❌ Could not extract RPS from benchmark results"
+          exit 1
+        fi
+        
         echo "Performance: $RPS req/sec"
+        
         # Basic performance check (should be > 1000 req/sec)
         if (( $(echo "$RPS > 1000" | bc -l) )); then
           echo "✅ Performance test passed: $RPS req/sec"

@@ -62,22 +62,22 @@ pub const UltraPoller = struct {
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        std.log.debug("UltraPoller.init: Starting initialization", .{});
+        if (builtin.mode == .Debug) std.log.debug("UltraPoller.init: Starting initialization", .{});
 
         // Initialize each component step by step to isolate the issue
         var result: Self = undefined;
         result.allocator = allocator;
         result.server_fd = -1;
 
-        std.log.debug("UltraPoller.init: Basic fields set", .{});
+        if (builtin.mode == .Debug) std.log.debug("UltraPoller.init: Basic fields set", .{});
 
         // Initialize connection queue first (simpler)
         result.conn_queue = ConnectionQueue.init(allocator);
-        std.log.debug("UltraPoller.init: Connection queue created", .{});
+        if (builtin.mode == .Debug) std.log.debug("UltraPoller.init: Connection queue created", .{});
 
         // Initialize arena allocator
         result.arena = std.heap.ArenaAllocator.init(allocator);
-        std.log.debug("UltraPoller.init: Arena allocator created", .{});
+        if (builtin.mode == .Debug) std.log.debug("UltraPoller.init: Arena allocator created", .{});
 
         // Initialize poller fd last (most likely to fail)
         result.poller_fd = switch (@import("builtin").target.os.tag) {
@@ -86,8 +86,8 @@ pub const UltraPoller = struct {
             else => return error.UnsupportedPlatform,
         };
 
-        std.log.debug("UltraPoller.init: Poller fd created: {}", .{result.poller_fd});
-        std.log.debug("UltraPoller.init: Initialization completed successfully", .{});
+        if (builtin.mode == .Debug) std.log.debug("UltraPoller.init: Poller fd created: {}", .{result.poller_fd});
+        if (builtin.mode == .Debug) std.log.debug("UltraPoller.init: Initialization completed successfully", .{});
         return result;
     }
 
@@ -104,7 +104,7 @@ pub const UltraPoller = struct {
             std.log.err("kqueue() failed with fd: {}", .{kq});
             return error.KqueueCreateFailed;
         }
-        std.log.debug("kqueue created with fd: {}", .{kq});
+        if (builtin.mode == .Debug) std.log.debug("kqueue created with fd: {}", .{kq});
         return @intCast(kq);
     }
 
@@ -115,7 +115,7 @@ pub const UltraPoller = struct {
             std.log.err("epoll_create1() failed with fd: {}", .{epfd});
             return error.EpollCreateFailed;
         }
-        std.log.debug("epoll created with fd: {}", .{epfd});
+        if (builtin.mode == .Debug) std.log.debug("epoll created with fd: {}", .{epfd});
         return @intCast(epfd);
     }
 
@@ -151,7 +151,7 @@ pub const UltraPoller = struct {
             std.log.err("kevent() add server failed: fd={}, result={}", .{ fd, result });
             return error.KqueueAddEventFailed;
         }
-        std.log.debug("kqueue server fd {} added successfully", .{fd});
+        if (builtin.mode == .Debug) std.log.debug("kqueue server fd {} added successfully", .{fd});
     }
 
     // Linux epoll server registration
@@ -170,7 +170,7 @@ pub const UltraPoller = struct {
             std.log.err("epoll_ctl() add server failed: fd={}, result={}", .{ fd, result });
             return error.EpollAddEventFailed;
         }
-        std.log.debug("epoll server fd {} added successfully", .{fd});
+        if (builtin.mode == .Debug) std.log.debug("epoll server fd {} added successfully", .{fd});
     }
 
     pub fn eventLoop(self: *Self, server: *std.net.Server, config: Config, shared_allocator: std.mem.Allocator) !void {
@@ -240,12 +240,12 @@ pub const UltraPoller = struct {
                 if (fd == self.server_fd) {
                     // Accept connections and queue them
                     self.acceptAndQueue(server) catch |err| {
-                        std.log.debug("acceptAndQueue failed: {}", .{err});
+                        if (builtin.mode == .Debug) std.log.debug("acceptAndQueue failed: {}", .{err});
                     };
                 }
             }
         } else {
-            std.log.debug("Invalid event count: {}", .{num_events});
+            if (builtin.mode == .Debug) std.log.debug("Invalid event count: {}", .{num_events});
         }
     }
 
@@ -265,12 +265,12 @@ pub const UltraPoller = struct {
                 if (fd == self.server_fd) {
                     // Accept connections and queue them
                     self.acceptAndQueue(server) catch |err| {
-                        std.log.debug("acceptAndQueue failed: {}", .{err});
+                        if (builtin.mode == .Debug) std.log.debug("acceptAndQueue failed: {}", .{err});
                     };
                 }
             }
         } else {
-            std.log.debug("Invalid event count: {}", .{num_events});
+            if (builtin.mode == .Debug) std.log.debug("Invalid event count: {}", .{num_events});
         }
     }
 
@@ -282,7 +282,7 @@ pub const UltraPoller = struct {
             const conn = server.accept() catch |err| switch (err) {
                 error.WouldBlock => break, // No more connections
                 error.ConnectionAborted, error.ConnectionResetByPeer => {
-                    std.log.debug("Connection error during accept: {}", .{err});
+                    if (builtin.mode == .Debug) std.log.debug("Connection error during accept: {}", .{err});
                     continue;
                 },
                 else => {
@@ -341,12 +341,12 @@ pub const UltraPoller = struct {
                 if (fd == self.server_fd) {
                     // Accept and immediately handle connections
                     self.handleAcceptAndProcess(server, config) catch |err| {
-                        std.log.debug("handleAcceptAndProcess failed: {}", .{err});
+                        if (builtin.mode == .Debug) std.log.debug("handleAcceptAndProcess failed: {}", .{err});
                     };
                 }
             }
         } else {
-            std.log.debug("Invalid event count in kqueue loop: {}", .{num_events});
+            if (builtin.mode == .Debug) std.log.debug("Invalid event count in kqueue loop: {}", .{num_events});
         }
     }
 
