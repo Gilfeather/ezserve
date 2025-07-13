@@ -6,20 +6,20 @@ const Config = @import("lib.zig").Config;
 
 // Ultra-high-performance multi-threaded poller
 pub fn ultraPollerMain(_: std.mem.Allocator, config: Config) !void {
-    std.log.debug("ultraPollerMain: Starting", .{});
-    
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: Starting", .{});
+
     // Start server with optimized allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const shared_allocator = gpa.allocator();
-    
-    std.log.debug("ultraPollerMain: Allocator created", .{});
+
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: Allocator created", .{});
 
     // Parse bind address
     const bind_addr = try std.net.Address.parseIp4(config.bind, config.port);
-    std.log.debug("ultraPollerMain: Bind address created: {s}:{}", .{ config.bind, config.port });
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: Bind address created: {s}:{}", .{ config.bind, config.port });
 
-    std.log.debug("ultraPollerMain: About to call listen()", .{});
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: About to call listen()", .{});
     var server = bind_addr.listen(.{
         .reuse_address = true,
     }) catch |err| {
@@ -41,26 +41,26 @@ pub fn ultraPollerMain(_: std.mem.Allocator, config: Config) !void {
         }
     };
     defer server.deinit();
-    std.log.debug("ultraPollerMain: Server listening on socket", .{});
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: Server listening on socket", .{});
 
     // Set server socket to non-blocking mode
-    std.log.debug("ultraPollerMain: About to set non-blocking mode", .{});
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: About to set non-blocking mode", .{});
     const flags = try std.posix.fcntl(server.stream.handle, std.posix.F.GETFL, 0);
     _ = try std.posix.fcntl(server.stream.handle, std.posix.F.SETFL, flags | 0x0004); // O_NONBLOCK
-    std.log.debug("ultraPollerMain: Socket set to non-blocking mode", .{});
-    std.log.debug("ultraPollerMain: About to log server info", .{});
-    std.log.debug("ultraPollerMain: config.root = {s}", .{config.root});
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: Socket set to non-blocking mode", .{});
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: About to log server info", .{});
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: config.root = {s}", .{config.root});
     std.log.info("ezserve: http://{s}:{d} root={s} (ultra-poller)", .{ config.bind, config.port, config.root });
-    std.log.debug("ultraPollerMain: Server info logged successfully", .{});
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: Server info logged successfully", .{});
 
     // Initialize ultra poller
-    std.log.debug("ultraPollerMain: About to initialize UltraPoller", .{});
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: About to initialize UltraPoller", .{});
     var ultra_poller = poller.UltraPoller.init(shared_allocator) catch |err| {
         std.log.err("Failed to initialize UltraPoller: {}", .{err});
         return err;
     };
     defer ultra_poller.deinit();
-    std.log.debug("ultraPollerMain: UltraPoller initialized successfully", .{});
+    if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: UltraPoller initialized successfully", .{});
 
     // Add server socket
     try ultra_poller.addServer(server.stream.handle);
