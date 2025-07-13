@@ -118,12 +118,8 @@ jobs:
     
     - name: Build for benchmark
       run: |
-        # Build ReleaseFast for performance testing  
-        if [ "$RUNNER_OS" = "Linux" ]; then
-          timeout 300 zig build -Doptimize=ReleaseFast || zig build -Doptimize=ReleaseSmall
-        else
-          zig build -Doptimize=ReleaseSmall
-        fi
+        # Build Debug version to get detailed logs for troubleshooting
+        zig build
     
     - name: Create test file
       run: echo "<h1>Hello World</h1>" > index.html
