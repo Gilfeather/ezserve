@@ -63,12 +63,12 @@ pub const UltraPoller = struct {
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         std.log.debug("UltraPoller.init: Starting initialization", .{});
-        
+
         // Initialize each component step by step to isolate the issue
         var result: Self = undefined;
         result.allocator = allocator;
         result.server_fd = -1;
-        
+
         std.log.debug("UltraPoller.init: Basic fields set", .{});
 
         // Initialize connection queue first (simpler)

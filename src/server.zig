@@ -7,12 +7,12 @@ const Config = @import("lib.zig").Config;
 // Ultra-high-performance multi-threaded poller
 pub fn ultraPollerMain(_: std.mem.Allocator, config: Config) !void {
     std.log.debug("ultraPollerMain: Starting", .{});
-    
+
     // Start server with optimized allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const shared_allocator = gpa.allocator();
-    
+
     std.log.debug("ultraPollerMain: Allocator created", .{});
 
     // Parse bind address
