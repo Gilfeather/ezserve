@@ -56,10 +56,10 @@ pub fn parseArgs(allocator: std.mem.Allocator) !Config {
             };
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--root") and i + 1 < args.len) {
-            config.root = args[i + 1];
+            config.root = try allocator.dupe(u8, args[i + 1]);
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--bind") and i + 1 < args.len) {
-            config.bind = args[i + 1];
+            config.bind = try allocator.dupe(u8, args[i + 1]);
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--single-page")) {
             config.single_page = true;

@@ -62,19 +62,33 @@ pub const UltraPoller = struct {
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        const poller_fd = switch (@import("builtin").target.os.tag) {
+        std.log.debug("UltraPoller.init: Starting initialization", .{});
+        
+        // Initialize each component step by step to isolate the issue
+        var result: Self = undefined;
+        result.allocator = allocator;
+        result.server_fd = -1;
+        
+        std.log.debug("UltraPoller.init: Basic fields set", .{});
+
+        // Initialize connection queue first (simpler)
+        result.conn_queue = ConnectionQueue.init(allocator);
+        std.log.debug("UltraPoller.init: Connection queue created", .{});
+
+        // Initialize arena allocator
+        result.arena = std.heap.ArenaAllocator.init(allocator);
+        std.log.debug("UltraPoller.init: Arena allocator created", .{});
+
+        // Initialize poller fd last (most likely to fail)
+        result.poller_fd = switch (@import("builtin").target.os.tag) {
             .macos => try initKqueue(),
             .linux => try initEpoll(),
             else => return error.UnsupportedPlatform,
         };
 
-        return Self{
-            .allocator = allocator,
-            .poller_fd = poller_fd,
-            .server_fd = -1,
-            .arena = std.heap.ArenaAllocator.init(allocator),
-            .conn_queue = ConnectionQueue.init(allocator),
-        };
+        std.log.debug("UltraPoller.init: Poller fd created: {}", .{result.poller_fd});
+        std.log.debug("UltraPoller.init: Initialization completed successfully", .{});
+        return result;
     }
 
     pub fn deinit(self: *Self) void {
@@ -86,14 +100,22 @@ pub const UltraPoller = struct {
     // macOS kqueue implementation
     fn initKqueue() !i32 {
         const kq = std.posix.system.kqueue();
-        if (kq < 0) return error.KqueueCreateFailed;
+        if (kq < 0) {
+            std.log.err("kqueue() failed with fd: {}", .{kq});
+            return error.KqueueCreateFailed;
+        }
+        std.log.debug("kqueue created with fd: {}", .{kq});
         return @intCast(kq);
     }
 
     // Linux epoll implementation
     fn initEpoll() !i32 {
         const epfd = std.posix.system.epoll_create1(std.posix.SOCK.CLOEXEC);
-        if (epfd < 0) return error.EpollCreateFailed;
+        if (epfd < 0) {
+            std.log.err("epoll_create1() failed with fd: {}", .{epfd});
+            return error.EpollCreateFailed;
+        }
+        std.log.debug("epoll created with fd: {}", .{epfd});
         return @intCast(epfd);
     }
 
@@ -125,7 +147,11 @@ pub const UltraPoller = struct {
 
         var eventlist: [1]std.posix.system.Kevent = undefined;
         const result = std.posix.system.kevent(self.poller_fd, &changelist, 1, &eventlist, 0, null);
-        if (result < 0) return error.KqueueAddEventFailed;
+        if (result < 0) {
+            std.log.err("kevent() add server failed: fd={}, result={}", .{ fd, result });
+            return error.KqueueAddEventFailed;
+        }
+        std.log.debug("kqueue server fd {} added successfully", .{fd});
     }
 
     // Linux epoll server registration
@@ -140,7 +166,11 @@ pub const UltraPoller = struct {
         };
 
         const result = std.posix.system.epoll_ctl(self.poller_fd, EPOLL_CTL_ADD, fd, &event);
-        if (result < 0) return error.EpollAddEventFailed;
+        if (result < 0) {
+            std.log.err("epoll_ctl() add server failed: fd={}, result={}", .{ fd, result });
+            return error.EpollAddEventFailed;
+        }
+        std.log.debug("epoll server fd {} added successfully", .{fd});
     }
 
     pub fn eventLoop(self: *Self, server: *std.net.Server, config: Config, shared_allocator: std.mem.Allocator) !void {
@@ -203,13 +233,19 @@ pub const UltraPoller = struct {
         if (num_events < 0) return error.KqueueWaitFailed;
         if (num_events == 0) return; // Timeout
 
-        for (eventlist[0..@intCast(num_events)]) |event| {
-            const fd: i32 = @intCast(event.ident);
+        if (num_events > 0 and num_events <= 1024) {
+            for (eventlist[0..@intCast(num_events)]) |event| {
+                const fd: i32 = @intCast(event.ident);
 
-            if (fd == self.server_fd) {
-                // Accept connections and queue them
-                self.acceptAndQueue(server) catch {};
+                if (fd == self.server_fd) {
+                    // Accept connections and queue them
+                    self.acceptAndQueue(server) catch |err| {
+                        std.log.debug("acceptAndQueue failed: {}", .{err});
+                    };
+                }
             }
+        } else {
+            std.log.debug("Invalid event count: {}", .{num_events});
         }
     }
 
@@ -222,13 +258,19 @@ pub const UltraPoller = struct {
         if (num_events < 0) return error.EpollWaitFailed;
         if (num_events == 0) return; // Timeout
 
-        for (events[0..@intCast(num_events)]) |event| {
-            const fd = event.data.fd;
+        if (num_events > 0 and num_events <= 1024) {
+            for (events[0..@intCast(num_events)]) |event| {
+                const fd = event.data.fd;
 
-            if (fd == self.server_fd) {
-                // Accept connections and queue them
-                self.acceptAndQueue(server) catch {};
+                if (fd == self.server_fd) {
+                    // Accept connections and queue them
+                    self.acceptAndQueue(server) catch |err| {
+                        std.log.debug("acceptAndQueue failed: {}", .{err});
+                    };
+                }
             }
+        } else {
+            std.log.debug("Invalid event count: {}", .{num_events});
         }
     }
 
@@ -239,7 +281,14 @@ pub const UltraPoller = struct {
         while (conn_count < 32) {
             const conn = server.accept() catch |err| switch (err) {
                 error.WouldBlock => break, // No more connections
-                else => return err,
+                error.ConnectionAborted, error.ConnectionResetByPeer => {
+                    std.log.debug("Connection error during accept: {}", .{err});
+                    continue;
+                },
+                else => {
+                    std.log.err("Unexpected accept error: {}", .{err});
+                    return err;
+                },
             };
             conn_count += 1;
 
@@ -285,13 +334,19 @@ pub const UltraPoller = struct {
         if (num_events < 0) return error.KqueueWaitFailed;
         if (num_events == 0) return; // Timeout
 
-        for (eventlist[0..@intCast(num_events)]) |event| {
-            const fd: i32 = @intCast(event.ident);
+        if (num_events > 0 and num_events <= 1024) {
+            for (eventlist[0..@intCast(num_events)]) |event| {
+                const fd: i32 = @intCast(event.ident);
 
-            if (fd == self.server_fd) {
-                // Accept and immediately handle connections
-                try self.handleAcceptAndProcess(server, config);
+                if (fd == self.server_fd) {
+                    // Accept and immediately handle connections
+                    self.handleAcceptAndProcess(server, config) catch |err| {
+                        std.log.debug("handleAcceptAndProcess failed: {}", .{err});
+                    };
+                }
             }
+        } else {
+            std.log.debug("Invalid event count in kqueue loop: {}", .{num_events});
         }
     }
 
