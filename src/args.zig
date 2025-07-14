@@ -49,17 +49,17 @@ pub fn parseArgs(allocator: std.mem.Allocator) !Config {
             printHelp();
             std.process.exit(0);
         } else if (std.mem.eql(u8, args[i], "--port") and i + 1 < args.len) {
-            config.port = std.fmt.parseInt(u16, args[i+1], 10) catch {
-                std.log.err("Invalid port number: {s}", .{args[i+1]});
+            config.port = std.fmt.parseInt(u16, args[i + 1], 10) catch {
+                std.log.err("Invalid port number: {s}", .{args[i + 1]});
                 std.log.err("Port must be a number between 1 and 65535", .{});
                 std.process.exit(1);
             };
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--root") and i + 1 < args.len) {
-            config.root = args[i+1];
+            config.root = try allocator.dupe(u8, args[i + 1]);
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--bind") and i + 1 < args.len) {
-            config.bind = args[i+1];
+            config.bind = try allocator.dupe(u8, args[i + 1]);
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--single-page")) {
             config.single_page = true;
@@ -70,8 +70,8 @@ pub fn parseArgs(allocator: std.mem.Allocator) !Config {
         } else if (std.mem.eql(u8, args[i], "--log=json")) {
             config.log_json = true;
         } else if (std.mem.eql(u8, args[i], "--threads") and i + 1 < args.len) {
-            config.threads = std.fmt.parseInt(u32, args[i+1], 10) catch {
-                std.log.err("Invalid thread count: {s}", .{args[i+1]});
+            config.threads = std.fmt.parseInt(u32, args[i + 1], 10) catch {
+                std.log.err("Invalid thread count: {s}", .{args[i + 1]});
                 std.log.err("Thread count must be a positive number", .{});
                 std.process.exit(1);
             };

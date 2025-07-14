@@ -1,0 +1,12 @@
+# Global code ownership
+* @Gilfeather
+
+# Critical files require owner approval
+/.github/ @Gilfeather
+/src/ @Gilfeather
+/build.zig @Gilfeather
+/README.md @Gilfeather
+
+# Specific component ownership (if needed in future)
+# /src/server.zig @Gilfeather
+# /src/poller.zig @Gilfeather

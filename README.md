@@ -16,9 +16,10 @@
 
 ## ✨ Features
 
-- 🪶 **Ultra-lightweight** - Binary size <70KB (ReleaseSmall) or <100KB (ReleaseFast)
+- 🪶 **Ultra-lightweight** - Binary size 73KB (ReleaseSmall) or 98KB (ReleaseFast)
 - 🔗 **Zero dependencies** - Uses only Zig standard library
-- 🌐 **Cross-platform** - Supports macOS/Linux/Windows
+
+- 🌐 **Cross-platform** - Supports macOS/Linux (Windows currently unsupported)
 - ⚡ **Blazing fast** - Multi-threaded with queue-based architecture
 - 🛠️ **Developer-friendly** - Development mode, auto-open browser, file watching
 - 🚀 **Production-ready** - Range requests, ETag support, HTTP/1.1 compliance
@@ -89,7 +90,7 @@ zig build test-integration   # Run integration tests only
 
 # Minimal binary size for embedded/Docker
 zig build -Doptimize=ReleaseSmall
-./zig-out/bin/ezserve --root ./public  # Only 68KB!
+./zig-out/bin/ezserve --root ./public  # Only 73KB!
 
 ```
 
@@ -122,7 +123,7 @@ zig build -Doptimize=ReleaseSmall
 - [x] **Comprehensive test suite** - Unit and integration tests
 - [x] **Multi-threading support** - Configurable worker threads with `--threads`
 - [x] **Queue-based architecture** - Eliminates socket errors and race conditions
-- [x] **Binary size optimization** - ReleaseSmall (68KB) vs ReleaseFast (99KB)
+- [x] **Binary size optimization** - ReleaseSmall (73KB) vs ReleaseFast (98KB)
 
 ### 🔮 Future Enhancements
 
@@ -183,20 +184,28 @@ Compatible with popular log aggregation tools:
 
 ## 📈 Performance
 
+### Latest Benchmark Results
+
 | Metric | ReleaseSmall | ReleaseFast |
 |--------|--------------|-------------|
-| Binary size | 68KB | 99KB |
-| Memory usage | <5MB | <5MB |
+| Binary size | 73KB | 98KB |
+| Memory usage | ~600KB RSS | ~600KB RSS |
 | Startup time | <50ms | <50ms |
-| Throughput | ~1600 req/s | ~1800 req/s |
-| Read errors | <100 (0.5%) | <80 (0.4%) |
+| Throughput (10s test) | 1,626 req/s | 1,634 req/s |
+| Peak performance | 3,255 req/s | 3,221 req/s |
+| Read errors | <20 (0.1%) | <25 (0.15%) |
 | Concurrent connections | Up to system limits | Up to system limits |
+
+### Test Environment
+- **Platform**: macOS (Intel)  
+- **Test tool**: wrk (4 threads, 100 connections)
+- **Architecture**: UltraPoller with queue-based multi-threading
 
 ## 🆚 Comparison with Other Tools
 
 | Tool | Binary Size | Dependencies | Startup Time | Features |
 |------|-------------|--------------|--------------|----------|
-| **ezserve** | 68KB-99KB | Zero | <50ms | Zig-based, dev mode, multi-threading |
+| **ezserve** | 73KB-98KB | Zero | <50ms | Zig-based, dev mode, multi-threading |
 | Python http.server | ~50MB | Python | ~200ms | Built-in standard |
 | Node.js http-server | ~30MB | Node.js | ~300ms | Via npm |
 | Go net/http | ~10MB | Zero | ~100ms | Static binary |
@@ -208,10 +217,10 @@ Compatible with popular log aggregation tools:
 # Development build (includes file watching and browser auto-open)
 zig build
 
-# Performance optimized build (99KB, max speed)
+# Performance optimized build (98KB, max speed)
 zig build -Doptimize=ReleaseFast
 
-# Size optimized build (68KB, good speed)
+# Size optimized build (73KB, good speed)
 zig build -Doptimize=ReleaseSmall
 
 # Cross-compilation examples
