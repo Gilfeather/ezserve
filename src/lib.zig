@@ -81,17 +81,17 @@ pub fn loadConfigFromFile(allocator: std.mem.Allocator, path: []const u8) !Confi
     defer allocator.free(content);
 
     var config = Config{};
-    
+
     // Simple TOML parser - parse key=value pairs
     var lines = std.mem.splitScalar(u8, content, '\n');
     while (lines.next()) |line| {
         const trimmed = std.mem.trim(u8, line, " \t\r\n");
         if (trimmed.len == 0 or trimmed[0] == '#') continue; // Skip empty lines and comments
-        
+
         if (std.mem.indexOf(u8, trimmed, "=")) |eq_pos| {
             const key = std.mem.trim(u8, trimmed[0..eq_pos], " \t");
-            const value = std.mem.trim(u8, trimmed[eq_pos + 1..], " \t\"'");
-            
+            const value = std.mem.trim(u8, trimmed[eq_pos + 1 ..], " \t\"'");
+
             if (std.mem.eql(u8, key, "port")) {
                 config.port = std.fmt.parseInt(u16, value, 10) catch config.port;
             } else if (std.mem.eql(u8, key, "root")) {
@@ -115,7 +115,7 @@ pub fn loadConfigFromFile(allocator: std.mem.Allocator, path: []const u8) !Confi
             }
         }
     }
-    
+
     return config;
 }
 

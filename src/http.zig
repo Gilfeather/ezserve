@@ -106,15 +106,15 @@ pub fn handleRequest(reader: anytype, writer: anytype, addr: std.net.Address, co
         }
 
         // Check for Accept-Encoding: gzip (case insensitive)
-        const ae_pos = std.mem.indexOf(u8, headers, "Accept-Encoding:") orelse 
-                      std.mem.indexOf(u8, headers, "accept-encoding:");
-        
+        const ae_pos = std.mem.indexOf(u8, headers, "Accept-Encoding:") orelse
+            std.mem.indexOf(u8, headers, "accept-encoding:");
+
         if (ae_pos) |pos| {
-            const header_name_len = if (std.mem.startsWith(u8, headers[pos..], "Accept-Encoding:")) 
-                "Accept-Encoding:".len 
-            else 
+            const header_name_len = if (std.mem.startsWith(u8, headers[pos..], "Accept-Encoding:"))
+                "Accept-Encoding:".len
+            else
                 "accept-encoding:".len;
-            
+
             const ae_line_start = pos + header_name_len;
             const ae_line_end = std.mem.indexOfScalarPos(u8, headers, ae_line_start, '\r') orelse
                 std.mem.indexOfScalarPos(u8, headers, ae_line_start, '\n') orelse headers.len;
@@ -122,7 +122,7 @@ pub fn handleRequest(reader: anytype, writer: anytype, addr: std.net.Address, co
             if (std.mem.indexOf(u8, encoding_spec, "gzip") != null) {
                 accepts_gzip = true;
             }
-            
+
             if (builtin.mode == .Debug) {
                 std.log.debug("Accept-Encoding header found: '{s}', accepts_gzip={}", .{ encoding_spec, accepts_gzip });
             }
@@ -251,12 +251,12 @@ pub fn handleFileRequest(writer: anytype, config: Config, path: []const u8, is_h
 
     // Check if we should gzip this content (not for partial requests)
     const should_gzip = config.gzip and accepts_gzip and !is_partial and shouldGzipContent(content_type);
-    
+
     // Debug output
     if (builtin.mode == .Debug) {
         std.log.debug("Gzip debug: config.gzip={}, accepts_gzip={}, is_partial={}, shouldGzip={}, final_should_gzip={}", .{ config.gzip, accepts_gzip, is_partial, shouldGzipContent(content_type), should_gzip });
     }
-    
+
     var content_length = actual_end - actual_start + 1;
     var gzipped_data: ?[]u8 = null;
     defer if (gzipped_data) |data| allocator.free(data);
@@ -265,21 +265,21 @@ pub fn handleFileRequest(writer: anytype, config: Config, path: []const u8, is_h
     if (should_gzip and !is_head) {
         var temp_buf = try allocator.alloc(u8, content_length);
         defer allocator.free(temp_buf);
-        
+
         if (is_partial and actual_start > 0) {
             try file.seekTo(actual_start);
         }
         const bytes_read = try file.readAll(temp_buf);
-        
+
         // Compress the data using Zig 0.14 API
         var compressed_list = std.ArrayList(u8).init(allocator);
         defer compressed_list.deinit();
-        
+
         var compressor = try std.compress.gzip.compressor(compressed_list.writer(), .{});
-        
+
         try compressor.writer().writeAll(temp_buf[0..bytes_read]);
         try compressor.finish();
-        
+
         gzipped_data = try compressed_list.toOwnedSlice();
         content_length = gzipped_data.?.len;
     }
@@ -356,28 +356,28 @@ fn serveSpaFallback(writer: anytype, config: Config, is_head: bool, _: ?usize, _
 
     const file_stat = try index_file.stat();
     const file_size = file_stat.size;
-    
+
     // Simple gzip compression for SPA fallback if enabled
     var gzipped_data: ?[]u8 = null;
     defer if (gzipped_data) |data| allocator.free(data);
     var content_length = file_size;
-    
+
     if (config.gzip and accepts_gzip and !is_head) {
         var temp_buf = try allocator.alloc(u8, file_size);
         defer allocator.free(temp_buf);
         const bytes_read = try index_file.readAll(temp_buf);
-        
+
         var compressed_list = std.ArrayList(u8).init(allocator);
         defer compressed_list.deinit();
-        
+
         var compressor = try std.compress.gzip.compressor(compressed_list.writer(), .{});
         try compressor.writer().writeAll(temp_buf[0..bytes_read]);
         try compressor.finish();
-        
+
         gzipped_data = try compressed_list.toOwnedSlice();
         content_length = gzipped_data.?.len;
     }
-    
+
     const cors_header = if (config.cors) "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, HEAD, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\n" else "";
     const encoding_header = if (gzipped_data != null) "Content-Encoding: gzip\r\n" else "";
 
