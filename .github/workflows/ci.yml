@@ -425,7 +425,7 @@ jobs:
         echo "<h1>Docker Test</h1>" > index.html
         
         # Run container
-        docker run -d --name ezserve-test -p 8091:8000 -v "$(pwd):/app" ezserve:latest --root /app
+        docker run -d --name ezserve-test -p 8091:8000 -v "$(pwd):/app" ezserve:latest --root /app --bind 0.0.0.0
         sleep 2
         
         # Test
