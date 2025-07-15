@@ -123,11 +123,6 @@ pub fn handleRequest(reader: anytype, writer: anytype, addr: std.net.Address, co
                 accepts_gzip = true;
             }
 
-            if (builtin.mode == .Debug) {
-                std.log.debug("Accept-Encoding header found: '{s}', accepts_gzip={}", .{ encoding_spec, accepts_gzip });
-            }
-        } else if (builtin.mode == .Debug) {
-            std.log.debug("No Accept-Encoding header found in headers", .{});
         }
 
         // Parse Range header for partial content support
@@ -252,10 +247,6 @@ pub fn handleFileRequest(writer: anytype, config: Config, path: []const u8, is_h
     // Check if we should gzip this content (not for partial requests)
     const should_gzip = config.gzip and accepts_gzip and !is_partial and shouldGzipContent(content_type);
 
-    // Debug output
-    if (builtin.mode == .Debug) {
-        std.log.debug("Gzip debug: config.gzip={}, accepts_gzip={}, is_partial={}, shouldGzip={}, final_should_gzip={}", .{ config.gzip, accepts_gzip, is_partial, shouldGzipContent(content_type), should_gzip });
-    }
 
     var content_length = actual_end - actual_start + 1;
     var gzipped_data: ?[]u8 = null;
@@ -263,24 +254,7 @@ pub fn handleFileRequest(writer: anytype, config: Config, path: []const u8, is_h
 
     // If gzipping, read and compress the entire file
     if (should_gzip and !is_head) {
-        var temp_buf = try allocator.alloc(u8, content_length);
-        defer allocator.free(temp_buf);
-
-        if (is_partial and actual_start > 0) {
-            try file.seekTo(actual_start);
-        }
-        const bytes_read = try file.readAll(temp_buf);
-
-        // Compress the data using Zig 0.14 API
-        var compressed_list = std.ArrayList(u8).init(allocator);
-        defer compressed_list.deinit();
-
-        var compressor = try std.compress.gzip.compressor(compressed_list.writer(), .{});
-
-        try compressor.writer().writeAll(temp_buf[0..bytes_read]);
-        try compressor.finish();
-
-        gzipped_data = try compressed_list.toOwnedSlice();
+        gzipped_data = try compressData(allocator, file, content_length, is_partial, actual_start);
         content_length = gzipped_data.?.len;
     }
 
@@ -409,6 +383,26 @@ fn isDirectory(path: []const u8) bool {
     var dir = std.fs.cwd().openDir(path, .{}) catch return false;
     defer dir.close();
     return true;
+}
+
+// Compress data using gzip - isolated to reduce binary bloat
+fn compressData(allocator: std.mem.Allocator, file: std.fs.File, content_length: usize, is_partial: bool, actual_start: usize) ![]u8 {
+    if (is_partial and actual_start > 0) {
+        try file.seekTo(actual_start);
+    }
+    
+    var temp_buf = try allocator.alloc(u8, content_length);
+    defer allocator.free(temp_buf);
+    const bytes_read = try file.readAll(temp_buf);
+
+    var compressed_list = std.ArrayList(u8).init(allocator);
+    defer compressed_list.deinit();
+
+    var compressor = try std.compress.gzip.compressor(compressed_list.writer(), .{});
+    try compressor.writer().writeAll(temp_buf[0..bytes_read]);
+    try compressor.finish();
+
+    return try compressed_list.toOwnedSlice();
 }
 
 // writeAllNonBlocking function - optimized for speed

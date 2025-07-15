@@ -58,15 +58,7 @@ jobs:
       run: zig build
     
     - name: Build ReleaseFast
-      run: |
-        if [ "$RUNNER_OS" = "Linux" ]; then
-          timeout 300 zig build -Doptimize=ReleaseFast || zig build -Doptimize=ReleaseSmall
-        else
-          zig build -Doptimize=ReleaseSmall
-        fi
-    
-    - name: Build ReleaseSmall
-      run: zig build -Doptimize=ReleaseSmall
+      run: zig build -Doptimize=ReleaseFast
 
   build-cross-platform:
     name: Cross-platform builds
@@ -89,7 +81,7 @@ jobs:
         version: 0.14.0
     
     - name: Build for ${{ matrix.target }}
-      run: timeout 300 zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} || zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }}
+      run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
     
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -278,15 +270,7 @@ jobs:
         version: 0.14.0
     
     - name: Build ReleaseFast
-      run: |
-        if [ "$RUNNER_OS" = "Linux" ]; then
-          timeout 300 zig build -Doptimize=ReleaseFast || zig build -Doptimize=ReleaseSmall
-        else
-          zig build -Doptimize=ReleaseSmall
-        fi
-    
-    - name: Build ReleaseSmall
-      run: zig build -Doptimize=ReleaseSmall
+      run: zig build -Doptimize=ReleaseFast
     
     - name: Analyze binary sizes
       run: |
@@ -298,23 +282,13 @@ jobs:
         FAST_SIZE=$(stat -c%s zig-out/bin/ezserve)
         echo "| ReleaseFast | ${FAST_SIZE} bytes | < 120KB |"
         
-        # ReleaseSmall
-        zig build -Doptimize=ReleaseSmall
-        SMALL_SIZE=$(stat -c%s zig-out/bin/ezserve)
-        echo "| ReleaseSmall | ${SMALL_SIZE} bytes | < 80KB |"
-        
         # Verify size constraints
         if [ $FAST_SIZE -gt 122880 ]; then  # 120KB
           echo "❌ ReleaseFast binary too large: ${FAST_SIZE} bytes"
           exit 1
         fi
         
-        if [ $SMALL_SIZE -gt 81920 ]; then  # 80KB
-          echo "❌ ReleaseSmall binary too large: ${SMALL_SIZE} bytes"
-          exit 1
-        fi
-        
-        echo "✅ All binary size constraints met"
+        echo "✅ Binary size constraint met"
 
   lint:
     name: Code quality
@@ -353,7 +327,7 @@ jobs:
         version: 0.14.0
     
     - name: Build server
-      run: zig build -Doptimize=ReleaseSmall
+      run: zig build -Doptimize=ReleaseFast
     
     - name: Test basic functionality
       run: |
@@ -408,7 +382,7 @@ jobs:
         
         WORKDIR /app
         COPY . .
-        RUN zig build -Doptimize=ReleaseSmall
+        RUN zig build -Doptimize=ReleaseFast
         
         FROM scratch
         COPY --from=builder /app/zig-out/bin/ezserve /ezserve
