@@ -63,7 +63,7 @@ zig build test-integration   # Run integration tests only
 | `--threads <num>`  | Number of worker threads (default: auto, max 8) | auto      |
 | `--watch`          | Watch for file changes                         | false     |
 | `--open`           | Auto-open browser after server start          | false     |
-| `--gzip`           | Enable gzip compression for text files (v0.5) | false     |
+| `--gzip`           | Enable gzip compression for text files        | false     |
 | `--config <file>`  | Load configuration from file (.ezserve.toml)  | none      |
 
 ## 🎯 Usage Examples
@@ -143,21 +143,17 @@ zig build -Doptimize=ReleaseSmall
 - [x] Range requests support (HTTP 206 Partial Content)
 - [x] ETag support (content-based cache validation)
 
-#### Version 0.4 ✅ IN PROGRESS
+#### Version 0.4 ✅ COMPLETED
 - [x] **Configuration file support (.ezserve.toml)** - Load settings from file
-- [x] **IPv6 support** - Automatic IPv4/IPv6 address detection
-- [ ] **Gzip compression support** - Temporarily disabled (Zig 0.14 API changes)
-- [ ] HTTPS support (with development certificates)
-- [ ] Plugin system
-- [ ] WebSocket proxy
-- [ ] Load balancing
+- [x] **IPv6 support** - Automatic IPv4/IPv6 address detection  
+- [x] **Gzip compression support** - Automatic compression for text files
 
 #### Version 0.5 (Future)
-- [ ] Complete Gzip compression support (after Zig API stabilization)
 - [ ] HTTPS support (with development certificates)
 - [ ] Plugin system
 - [ ] WebSocket proxy
 - [ ] Load balancing
+- [ ] Brotli compression support
 
 ## 📊 JSON Logging
 
