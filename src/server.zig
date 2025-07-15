@@ -4,6 +4,17 @@ const poller = @import("poller.zig");
 
 const Config = @import("lib.zig").Config;
 
+// Parse IPv4 or IPv6 address
+fn parseAddress(address: []const u8, port: u16) !std.net.Address {
+    // Try IPv4 first
+    if (std.net.Address.parseIp4(address, port)) |addr| {
+        return addr;
+    } else |_| {
+        // Try IPv6
+        return std.net.Address.parseIp6(address, port);
+    }
+}
+
 // Ultra-high-performance multi-threaded poller
 pub fn ultraPollerMain(_: std.mem.Allocator, config: Config) !void {
     if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: Starting", .{});
@@ -15,8 +26,11 @@ pub fn ultraPollerMain(_: std.mem.Allocator, config: Config) !void {
 
     if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: Allocator created", .{});
 
-    // Parse bind address
-    const bind_addr = try std.net.Address.parseIp4(config.bind, config.port);
+    // Parse bind address (supports both IPv4 and IPv6)
+    const bind_addr = parseAddress(config.bind, config.port) catch |err| {
+        std.log.err("Invalid bind address: {s}:{d} - {}", .{ config.bind, config.port, err });
+        return;
+    };
     if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: Bind address created: {s}:{}", .{ config.bind, config.port });
 
     if (builtin.mode == .Debug) std.log.debug("ultraPollerMain: About to call listen()", .{});
@@ -76,8 +90,11 @@ pub fn mainSync(_: std.mem.Allocator, config: Config) !void {
     defer _ = gpa.deinit();
     const shared_allocator = gpa.allocator();
 
-    // Parse bind address
-    const bind_addr = try std.net.Address.parseIp4(config.bind, config.port);
+    // Parse bind address (supports both IPv4 and IPv6)
+    const bind_addr = parseAddress(config.bind, config.port) catch |err| {
+        std.log.err("Invalid bind address: {s}:{d} - {}", .{ config.bind, config.port, err });
+        return;
+    };
 
     var server = bind_addr.listen(.{
         .reuse_address = true,

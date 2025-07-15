@@ -1,4 +1,4 @@
-# 🚀 ezserve v0.3.0
+# 🚀 ezserve v0.4.0
 
 **Ultra-lightweight, zero-dependency development HTTP server written in Zig**
 
@@ -63,6 +63,8 @@ zig build test-integration   # Run integration tests only
 | `--threads <num>`  | Number of worker threads (default: auto, max 8) | auto      |
 | `--watch`          | Watch for file changes                         | false     |
 | `--open`           | Auto-open browser after server start          | false     |
+| `--gzip`           | Enable gzip compression for text files (v0.5) | false     |
+| `--config <file>`  | Load configuration from file (.ezserve.toml)  | none      |
 
 ## 🎯 Usage Examples
 
@@ -85,6 +87,12 @@ zig build test-integration   # Run integration tests only
 
 # High-performance server with custom thread count
 ./ezserve --threads 16 --bind 0.0.0.0
+
+# IPv6 support
+./ezserve --bind ::1 --port 8080
+
+# Using configuration file
+./ezserve --config production.toml
 
 
 
@@ -135,10 +143,17 @@ zig build -Doptimize=ReleaseSmall
 - [x] Range requests support (HTTP 206 Partial Content)
 - [x] ETag support (content-based cache validation)
 
-#### Version 0.4
-- [ ] Gzip compression support
-- [ ] Configuration file support (.ezserve.toml)
-- [ ] IPv6 support
+#### Version 0.4 ✅ IN PROGRESS
+- [x] **Configuration file support (.ezserve.toml)** - Load settings from file
+- [x] **IPv6 support** - Automatic IPv4/IPv6 address detection
+- [ ] **Gzip compression support** - Temporarily disabled (Zig 0.14 API changes)
+- [ ] HTTPS support (with development certificates)
+- [ ] Plugin system
+- [ ] WebSocket proxy
+- [ ] Load balancing
+
+#### Version 0.5 (Future)
+- [ ] Complete Gzip compression support (after Zig API stabilization)
 - [ ] HTTPS support (with development certificates)
 - [ ] Plugin system
 - [ ] WebSocket proxy
