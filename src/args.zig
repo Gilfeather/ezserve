@@ -20,6 +20,8 @@ pub fn printHelp() void {
         \\    --log=json          Output access logs in JSON format
         \\    --threads <number>  Number of worker threads (default: auto, max 8)
         \\    --watch             File watching mode (TODO)
+        \\    --gzip              Enable gzip compression for text files
+        \\    --config <file>     Load configuration from file (.ezserve.toml)
         \\    --help, -h          Show this help message
         \\
         \\EXAMPLES:
@@ -40,7 +42,8 @@ pub fn parseArgs(allocator: std.mem.Allocator) !Config {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    var config = Config{};
+    // Try to load default config file first
+    var config = lib.loadConfigFromFile(allocator, ".ezserve.toml") catch Config{};
 
     // Simple argument parsing
     var i: usize = 1;
@@ -78,6 +81,23 @@ pub fn parseArgs(allocator: std.mem.Allocator) !Config {
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--watch")) {
             config.watch = true;
+        } else if (std.mem.eql(u8, args[i], "--gzip")) {
+            config.gzip = true;
+        } else if (std.mem.eql(u8, args[i], "--config") and i + 1 < args.len) {
+            // Load configuration from specified file
+            const file_config = try lib.loadConfigFromFile(allocator, args[i + 1]);
+            // Merge with current config (file takes precedence for unset values)
+            if (config.port == 8000) config.port = file_config.port;
+            if (std.mem.eql(u8, config.root, ".")) config.root = file_config.root;
+            if (std.mem.eql(u8, config.bind, "127.0.0.1")) config.bind = file_config.bind;
+            if (!config.single_page) config.single_page = file_config.single_page;
+            if (!config.cors) config.cors = file_config.cors;
+            if (!config.no_dirlist) config.no_dirlist = file_config.no_dirlist;
+            if (!config.log_json) config.log_json = file_config.log_json;
+            if (!config.watch) config.watch = file_config.watch;
+            if (!config.gzip) config.gzip = file_config.gzip;
+            if (config.threads == null) config.threads = file_config.threads;
+            i += 1;
         } else if (std.mem.startsWith(u8, args[i], "--")) {
             std.log.err("Unknown option: {s}", .{args[i]});
             std.log.err("Use --help to see available options", .{});

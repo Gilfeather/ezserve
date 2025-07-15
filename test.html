@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Gzip Test Page</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background: linear-gradient(45deg, #f0f0f0, #e0e0e0);
+        }
+        .container { 
+            max-width: 800px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 40px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; text-align: center; }
+        p { line-height: 1.6; }
+        .feature { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            margin: 15px 0; 
+            border-left: 4px solid #007bff; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 ezserve v0.4.0 - Gzip Compression Test</h1>
+        
+        <p>This is a test page to verify that the gzip compression feature is working correctly in ezserve v0.4.0.</p>
+        
+        <div class="feature">
+            <h3>✨ New Features in v0.4.0:</h3>
+            <ul>
+                <li><strong>Gzip Compression</strong> - Automatic compression for text files</li>
+                <li><strong>Configuration Files</strong> - Support for .ezserve.toml files</li>
+                <li><strong>IPv6 Support</strong> - Automatic IPv4/IPv6 detection</li>
+                <li><strong>Enhanced CLI</strong> - New command line options</li>
+            </ul>
+        </div>
+        
+        <div class="feature">
+            <h3>🔧 How to Test Gzip:</h3>
+            <ol>
+                <li>Start ezserve with: <code>./zig-out/bin/ezserve --gzip</code></li>
+                <li>Check response headers for: <code>Content-Encoding: gzip</code></li>
+                <li>Verify smaller transfer size with browser dev tools</li>
+                <li>Compare with and without --gzip flag</li>
+            </ol>
+        </div>
+
+        <p>If you can see this page and the response includes gzip encoding headers, then the compression feature is working perfectly!</p>
+        
+        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+    </div>
+</body>
+</html>

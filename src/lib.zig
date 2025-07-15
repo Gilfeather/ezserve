@@ -10,6 +10,8 @@ pub const Config = struct {
     log_json: bool = false,
     watch: bool = false,
     threads: ?u32 = null, // null = auto-detect, default max 8 for safety
+    gzip: bool = false, // Enable gzip compression
+    config_file: ?[]const u8 = null, // Configuration file path
 };
 
 pub const ResponseInfo = struct {
@@ -64,6 +66,59 @@ pub fn getMimeType(path: []const u8) []const u8 {
     return "application/octet-stream";
 }
 
+// Load configuration from TOML file
+pub fn loadConfigFromFile(allocator: std.mem.Allocator, path: []const u8) !Config {
+    const file = std.fs.cwd().openFile(path, .{}) catch |err| switch (err) {
+        error.FileNotFound => {
+            std.log.warn("Configuration file not found: {s}", .{path});
+            return Config{};
+        },
+        else => return err,
+    };
+    defer file.close();
+
+    const content = try file.readToEndAlloc(allocator, 4096);
+    defer allocator.free(content);
+
+    var config = Config{};
+
+    // Simple TOML parser - parse key=value pairs
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r\n");
+        if (trimmed.len == 0 or trimmed[0] == '#') continue; // Skip empty lines and comments
+
+        if (std.mem.indexOf(u8, trimmed, "=")) |eq_pos| {
+            const key = std.mem.trim(u8, trimmed[0..eq_pos], " \t");
+            const value = std.mem.trim(u8, trimmed[eq_pos + 1 ..], " \t\"'");
+
+            if (std.mem.eql(u8, key, "port")) {
+                config.port = std.fmt.parseInt(u16, value, 10) catch config.port;
+            } else if (std.mem.eql(u8, key, "root")) {
+                config.root = try allocator.dupe(u8, value);
+            } else if (std.mem.eql(u8, key, "bind")) {
+                config.bind = try allocator.dupe(u8, value);
+            } else if (std.mem.eql(u8, key, "single_page")) {
+                config.single_page = std.mem.eql(u8, value, "true");
+            } else if (std.mem.eql(u8, key, "cors")) {
+                config.cors = std.mem.eql(u8, value, "true");
+            } else if (std.mem.eql(u8, key, "no_dirlist")) {
+                config.no_dirlist = std.mem.eql(u8, value, "true");
+            } else if (std.mem.eql(u8, key, "log_json")) {
+                config.log_json = std.mem.eql(u8, value, "true");
+            } else if (std.mem.eql(u8, key, "watch")) {
+                config.watch = std.mem.eql(u8, value, "true");
+            } else if (std.mem.eql(u8, key, "gzip")) {
+                config.gzip = std.mem.eql(u8, value, "true");
+            } else if (std.mem.eql(u8, key, "threads")) {
+                config.threads = std.fmt.parseInt(u32, value, 10) catch null;
+            }
+        }
+    }
+
+    return config;
+}
+
 // Tests
 const testing = std.testing;
 
@@ -113,6 +168,8 @@ test "Config - default values" {
     try testing.expect(config.no_dirlist == false);
     try testing.expect(config.log_json == false);
     try testing.expect(config.watch == false);
+    try testing.expect(config.gzip == false);
+    try testing.expect(config.config_file == null);
 }
 
 test "Config - custom values" {
@@ -125,6 +182,7 @@ test "Config - custom values" {
         .no_dirlist = true,
         .log_json = true,
         .watch = true,
+        .gzip = true,
     };
     try testing.expect(config.port == 3000);
     try testing.expectEqualStrings("./public", config.root);
@@ -134,6 +192,7 @@ test "Config - custom values" {
     try testing.expect(config.no_dirlist == true);
     try testing.expect(config.log_json == true);
     try testing.expect(config.watch == true);
+    try testing.expect(config.gzip == true);
 }
 
 test "ResponseInfo - structure" {
