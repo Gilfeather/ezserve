@@ -35,7 +35,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest] # Windows未サポート
-        zig-version: ['0.14.1']
+        zig-version: ['0.14.0']
     
     steps:
     - uses: actions/checkout@v4
@@ -86,7 +86,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
-        version: 0.14.1
+        version: 0.14.0
     
     - name: Build for ${{ matrix.target }}
       run: timeout 300 zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} || zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }}
@@ -109,7 +109,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
-        version: 0.14.1
+        version: 0.14.0
     
     - name: Install wrk
       run: |
@@ -252,7 +252,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
-        version: 0.14.1
+        version: 0.14.0
     
     - name: Build with security checks
       run: zig build -Doptimize=ReleaseSafe
@@ -275,7 +275,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
-        version: 0.14.1
+        version: 0.14.0
     
     - name: Build ReleaseFast
       run: |
@@ -326,7 +326,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
-        version: 0.14.1
+        version: 0.14.0
     
     - name: Check code formatting
       run: |
@@ -350,7 +350,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
-        version: 0.14.1
+        version: 0.14.0
     
     - name: Build server
       run: zig build -Doptimize=ReleaseSmall
@@ -401,8 +401,10 @@ jobs:
         RUN apk add --no-cache curl xz
         
         # Install Zig
-        RUN curl -L https://ziglang.org/download/0.14.1/zig-linux-x86_64-0.14.1.tar.xz | tar -xJ
-        ENV PATH="/zig-linux-x86_64-0.14.1:$PATH"
+        RUN curl -L -o zig.tar.xz https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz && \
+            tar -xJf zig.tar.xz && \
+            rm zig.tar.xz
+        ENV PATH="/zig-linux-x86_64-0.14.0:$PATH"
         
         WORKDIR /app
         COPY . .
@@ -446,7 +448,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
-        version: 0.14.1
+        version: 0.14.0
     
     - name: Download all artifacts
       uses: actions/download-artifact@v4
