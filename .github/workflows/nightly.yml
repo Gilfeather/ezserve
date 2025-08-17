@@ -15,7 +15,7 @@ jobs:
         zig-version: ['master']  # Test with latest Zig master
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     
     - name: Setup Zig (master)
       uses: goto-bus-stop/setup-zig@v2
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 2  # Get current and previous commit
     
@@ -115,7 +115,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
@@ -161,7 +161,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
@@ -198,7 +198,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     
     - name: Check README
       run: |
