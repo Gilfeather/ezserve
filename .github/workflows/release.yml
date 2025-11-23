@@ -28,7 +28,7 @@ jobs:
             name: ezserve-windows-x86_64
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
@@ -104,7 +104,7 @@ jobs:
     needs: build-and-upload
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
