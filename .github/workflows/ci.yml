@@ -92,7 +92,7 @@ jobs:
       run: timeout 300 zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} || zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }}
     
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ezserve-${{ matrix.target }}
         path: zig-out/bin/ezserve*
